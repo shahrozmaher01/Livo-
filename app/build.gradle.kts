@@ -1,4 +1,5 @@
 import com.google.gms.googleservices.GoogleServicesPlugin.MissingGoogleServicesStrategy
+import java.util.Base64
 
 plugins {
   alias(libs.plugins.android.application)
@@ -20,6 +21,32 @@ android {
     versionName = "1.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+  }
+
+  // Ensure debug.keystore is present on fresh clones and CI runners without modifying signingConfigs
+  val debugKeystoreFile = file("${rootDir}/debug.keystore")
+  if (!debugKeystoreFile.exists()) {
+    val base64Keystore = file("${rootDir}/debug.keystore.base64")
+    if (base64Keystore.exists()) {
+      try {
+        debugKeystoreFile.writeBytes(Base64.getDecoder().decode(base64Keystore.readText().trim()))
+      } catch (_: Exception) {}
+    }
+    if (!debugKeystoreFile.exists()) {
+      try {
+        ProcessBuilder(
+          "keytool", "-genkey", "-v",
+          "-keystore", debugKeystoreFile.absolutePath,
+          "-storepass", "android",
+          "-alias", "androiddebugkey",
+          "-keypass", "android",
+          "-keyalg", "RSA",
+          "-keysize", "2048",
+          "-validity", "10000",
+          "-dname", "CN=Android Debug,O=Android,C=US"
+        ).inheritIO().start().waitFor()
+      } catch (_: Exception) {}
+    }
   }
 
   signingConfigs {
