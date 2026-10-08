@@ -1,0 +1,6 @@
+{
+  "name": "Livo",
+  "description": "Livo - Realtime voice chat social rooms, audio parties, gifts, community and live conversations",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
