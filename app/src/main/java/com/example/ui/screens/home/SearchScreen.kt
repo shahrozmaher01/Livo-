@@ -67,7 +67,14 @@ fun SearchScreen(
           .fillMaxWidth()
           .statusBarsPadding()
       ) {
-        LivoTopBar(title = "Search Livo", onBackClick = onBackClick)
+        LivoTopBar(
+          title = "Search Livo",
+          onBackClick = onBackClick,
+          actions = {
+            LivoBrandLogo(size = 30.dp, showGlow = false)
+            Spacer(modifier = Modifier.width(12.dp))
+          }
+        )
         OutlinedTextField(
           value = searchQuery,
           onValueChange = { searchQuery = it },

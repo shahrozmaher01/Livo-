@@ -26,10 +26,7 @@ import com.example.data.model.RankingPeriod
 import com.example.data.model.RankingType
 import com.example.data.model.UserEntity
 import com.example.data.repository.LivoRepository
-import com.example.ui.components.AvatarWithFrame
-import com.example.ui.components.EmptyStateView
-import com.example.ui.components.LevelBadge
-import com.example.ui.components.LivoTopBar
+import com.example.ui.components.*
 import com.example.ui.theme.*
 
 @Composable
@@ -56,7 +53,13 @@ fun RankingsScreen(
           .fillMaxWidth()
           .statusBarsPadding()
       ) {
-        LivoTopBar(title = "Livo Leaderboards")
+        LivoTopBar(
+          title = "Livo Leaderboards",
+          actions = {
+            LivoBrandLogo(size = 30.dp, showGlow = false)
+            Spacer(modifier = Modifier.width(12.dp))
+          }
+        )
 
         // Type Tabs: Top Wealth, Top Charm, Top Room
         TabRow(

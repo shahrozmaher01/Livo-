@@ -19,7 +19,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.R
 import com.example.data.repository.LivoRepository
-import com.example.ui.components.LivoTopBar
+import com.example.ui.components.*
 import com.example.ui.theme.*
 
 @Composable
@@ -34,7 +34,14 @@ fun EventsScreen(
           .fillMaxWidth()
           .statusBarsPadding()
       ) {
-        LivoTopBar(title = "Livo Events & Festivals", onBackClick = onBackClick)
+        LivoTopBar(
+          title = "Livo Events & Festivals",
+          onBackClick = onBackClick,
+          actions = {
+            LivoBrandLogo(size = 30.dp, showGlow = false)
+            Spacer(modifier = Modifier.width(12.dp))
+          }
+        )
       }
     },
     containerColor = DarkBackground

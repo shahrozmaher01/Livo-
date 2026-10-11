@@ -38,6 +38,18 @@ interface UserDao {
 
   @Query("DELETE FROM follows WHERE followerId = :followerId AND followingId = :followingId")
   suspend fun deleteFollow(followerId: String, followingId: String)
+
+  @Query("SELECT COUNT(*) FROM follows WHERE followerId = :userId")
+  suspend fun getFollowingCount(userId: String): Int
+
+  @Query("SELECT COUNT(*) FROM follows WHERE followingId = :userId")
+  suspend fun getFollowersCount(userId: String): Int
+
+  @Query("SELECT COUNT(*) FROM follows WHERE followerId = :userId")
+  fun observeFollowingCount(userId: String): Flow<Int>
+
+  @Query("SELECT COUNT(*) FROM follows WHERE followingId = :userId")
+  fun observeFollowersCount(userId: String): Flow<Int>
 }
 
 @Dao
@@ -50,6 +62,12 @@ interface RoomDao {
 
   @Query("SELECT * FROM rooms WHERE id = :roomId LIMIT 1")
   fun observeRoomById(roomId: String): Flow<RoomEntity?>
+
+  @Query("SELECT * FROM rooms WHERE ownerId = :ownerId AND isActive = 1 LIMIT 1")
+  suspend fun getRoomByOwnerId(ownerId: String): RoomEntity?
+
+  @Query("SELECT * FROM rooms WHERE ownerId = :ownerId AND isActive = 1 LIMIT 1")
+  fun observeRoomByOwnerId(ownerId: String): Flow<RoomEntity?>
 
   @Query("SELECT * FROM rooms WHERE roomNumber = :number OR title LIKE '%' || :query || '%'")
   suspend fun searchRooms(number: Long, query: String): List<RoomEntity>
@@ -205,3 +223,59 @@ interface SocialDao {
   @Query("SELECT * FROM audit_logs ORDER BY timestamp DESC LIMIT 100")
   fun observeAuditLogs(): Flow<List<AuditLogEntity>>
 }
+
+@Dao
+interface PanelDao {
+  // Panel Configurations
+  @Insert(onConflict = OnConflictStrategy.REPLACE)
+  suspend fun insertPanelConfig(config: PanelConfigEntity)
+
+  @Query("SELECT * FROM panel_configurations")
+  fun observePanelConfigs(): Flow<List<PanelConfigEntity>>
+
+  @Query("SELECT * FROM panel_configurations WHERE panelType = :panelType LIMIT 1")
+  suspend fun getPanelConfigByType(panelType: String): PanelConfigEntity?
+
+  // Panel Templates
+  @Insert(onConflict = OnConflictStrategy.REPLACE)
+  suspend fun insertTemplate(template: PanelTemplateEntity)
+
+  @Query("SELECT * FROM panel_templates")
+  fun observeTemplates(): Flow<List<PanelTemplateEntity>>
+
+  @Query("DELETE FROM panel_templates WHERE id = :templateId")
+  suspend fun deleteTemplate(templateId: String)
+
+  // User Panel Assignments
+  @Insert(onConflict = OnConflictStrategy.REPLACE)
+  suspend fun insertAssignment(assignment: UserPanelAssignmentEntity)
+
+  @Query("SELECT * FROM user_panel_assignments ORDER BY assignedAt DESC")
+  fun observeAllAssignments(): Flow<List<UserPanelAssignmentEntity>>
+
+  @Query("SELECT * FROM user_panel_assignments WHERE userId = :userId AND status = 'ACTIVE'")
+  fun observeActiveAssignmentsForUser(userId: String): Flow<List<UserPanelAssignmentEntity>>
+
+  @Query("SELECT * FROM user_panel_assignments WHERE userId = :userId AND panelType = :panelType LIMIT 1")
+  suspend fun getAssignment(userId: String, panelType: String): UserPanelAssignmentEntity?
+
+  @Query("UPDATE user_panel_assignments SET status = :status WHERE id = :assignmentId")
+  suspend fun updateAssignmentStatus(assignmentId: String, status: String)
+
+  @Query("DELETE FROM user_panel_assignments WHERE id = :assignmentId")
+  suspend fun deleteAssignment(assignmentId: String)
+
+  @Query("SELECT * FROM user_panel_assignments WHERE id = :assignmentId LIMIT 1")
+  suspend fun getAssignmentById(assignmentId: String): UserPanelAssignmentEntity?
+
+  // Currency Settings
+  @Insert(onConflict = OnConflictStrategy.REPLACE)
+  suspend fun insertCurrencySettings(settings: SystemCurrencySettingsEntity)
+
+  @Query("SELECT * FROM system_currency_settings WHERE id = 'global_currency_settings' LIMIT 1")
+  fun observeCurrencySettings(): Flow<SystemCurrencySettingsEntity?>
+
+  @Query("SELECT * FROM system_currency_settings WHERE id = 'global_currency_settings' LIMIT 1")
+  suspend fun getCurrencySettings(): SystemCurrencySettingsEntity?
+}
+

@@ -1,6 +1,8 @@
 package com.example.ui.components
 
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -19,8 +21,10 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -28,9 +32,87 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.example.R
+import com.example.data.model.RoomEntity
 import com.example.data.model.UserEntity
 import com.example.data.model.UserRole
 import com.example.ui.theme.*
+
+@Composable
+fun LivoBrandLogo(
+  modifier: Modifier = Modifier,
+  size: Dp = 48.dp,
+  showGlow: Boolean = true,
+  shape: Shape = RoundedCornerShape(size * 0.22f),
+  contentScale: ContentScale = ContentScale.Fit,
+  onClick: (() -> Unit)? = null
+) {
+  Box(
+    contentAlignment = Alignment.Center,
+    modifier = modifier
+      .size(size)
+      .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+  ) {
+    if (showGlow) {
+      Box(
+        modifier = Modifier
+          .fillMaxSize()
+          .scale(1.10f)
+          .clip(shape)
+          .background(
+            Brush.radialGradient(
+              listOf(
+                LivoCyan.copy(alpha = 0.40f),
+                LivoViolet.copy(alpha = 0.25f),
+                Color.Transparent
+              )
+            )
+          )
+      )
+    }
+    Image(
+      painter = painterResource(id = R.drawable.ic_livo_logo),
+      contentDescription = "Livo Brand Logo",
+      contentScale = contentScale,
+      modifier = Modifier
+        .fillMaxSize()
+        .clip(shape)
+    )
+  }
+}
+
+@Composable
+fun LivoBrandHeader(
+  modifier: Modifier = Modifier,
+  logoSize: Dp = 38.dp,
+  title: String = "Livo",
+  subtitle: String? = "Live Audio Social",
+  onClick: (() -> Unit)? = null
+) {
+  Row(
+    verticalAlignment = Alignment.CenterVertically,
+    modifier = modifier.then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+  ) {
+    LivoBrandLogo(size = logoSize, showGlow = true)
+    Spacer(modifier = Modifier.width(10.dp))
+    Column {
+      Text(
+        text = title,
+        color = TextPrimary,
+        fontWeight = FontWeight.ExtraBold,
+        fontSize = 17.sp,
+        letterSpacing = 0.5.sp
+      )
+      if (subtitle != null) {
+        Text(
+          text = subtitle,
+          color = TextSecondary,
+          fontSize = 11.sp
+        )
+      }
+    }
+  }
+}
 
 @Composable
 fun AvatarWithFrame(
@@ -313,9 +395,10 @@ fun LivoButton(
 
 @Composable
 fun EmptyStateView(
-  icon: ImageVector,
+  icon: ImageVector? = null,
   title: String,
   description: String,
+  showBrandLogo: Boolean = false,
   actionButtonText: String? = null,
   onActionClick: (() -> Unit)? = null,
   modifier: Modifier = Modifier
@@ -327,19 +410,23 @@ fun EmptyStateView(
       .fillMaxWidth()
       .padding(32.dp)
   ) {
-    Box(
-      contentAlignment = Alignment.Center,
-      modifier = Modifier
-        .size(72.dp)
-        .clip(CircleShape)
-        .background(DarkSurfaceElevated)
-    ) {
-      Icon(
-        imageVector = icon,
-        contentDescription = null,
-        tint = LivoVioletLight,
-        modifier = Modifier.size(36.dp)
-      )
+    if (showBrandLogo) {
+      LivoBrandLogo(size = 64.dp, showGlow = true)
+    } else if (icon != null) {
+      Box(
+        contentAlignment = Alignment.Center,
+        modifier = Modifier
+          .size(72.dp)
+          .clip(CircleShape)
+          .background(DarkSurfaceElevated)
+      ) {
+        Icon(
+          imageVector = icon,
+          contentDescription = null,
+          tint = LivoVioletLight,
+          modifier = Modifier.size(36.dp)
+        )
+      }
     }
     Spacer(modifier = Modifier.height(16.dp))
     Text(
@@ -414,3 +501,91 @@ fun ErrorRetryView(
     }
   }
 }
+
+@Composable
+fun RoomCard(
+  room: RoomEntity,
+  onClick: () -> Unit,
+  modifier: Modifier = Modifier
+) {
+  Card(
+    shape = RoundedCornerShape(16.dp),
+    colors = CardDefaults.cardColors(containerColor = DarkSurfaceElevated),
+    border = BorderStroke(1.dp, DarkSurfaceBorder),
+    modifier = modifier
+      .fillMaxWidth()
+      .clickable(onClick = onClick)
+  ) {
+    Row(
+      verticalAlignment = Alignment.CenterVertically,
+      modifier = Modifier.padding(12.dp)
+    ) {
+      Box(
+        modifier = Modifier
+          .size(56.dp)
+          .clip(RoundedCornerShape(14.dp))
+      ) {
+        AsyncImage(
+          model = room.coverUrl,
+          contentDescription = room.title,
+          contentScale = ContentScale.Crop,
+          modifier = Modifier.fillMaxSize()
+        )
+      }
+
+      Spacer(modifier = Modifier.width(12.dp))
+
+      Column(modifier = Modifier.weight(1f)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+          Text(
+            text = room.title,
+            color = Color.White,
+            fontWeight = FontWeight.Bold,
+            fontSize = 15.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+          )
+          Spacer(modifier = Modifier.width(6.dp))
+          Surface(
+            shape = RoundedCornerShape(6.dp),
+            color = LivoViolet.copy(alpha = 0.2f)
+          ) {
+            Text(
+              text = room.category.displayName,
+              color = LivoVioletLight,
+              fontSize = 10.sp,
+              fontWeight = FontWeight.SemiBold,
+              modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+            )
+          }
+        }
+
+        Spacer(modifier = Modifier.height(4.dp))
+
+        Text(
+          text = "Host: ${room.ownerName} • ID: ${room.roomNumber}",
+          color = TextSecondary,
+          fontSize = 12.sp,
+          maxLines = 1
+        )
+      }
+
+      Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(
+          imageVector = Icons.Default.GraphicEq,
+          contentDescription = null,
+          tint = SpeakingGreen,
+          modifier = Modifier.size(16.dp)
+        )
+        Spacer(modifier = Modifier.width(4.dp))
+        Text(
+          text = "${room.listenersCount}",
+          color = SpeakingGreen,
+          fontSize = 12.sp,
+          fontWeight = FontWeight.Bold
+        )
+      }
+    }
+  }
+}
+

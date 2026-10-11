@@ -20,8 +20,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.FrameItem
 import com.example.data.repository.LivoRepository
-import com.example.ui.components.AvatarWithFrame
-import com.example.ui.components.LivoTopBar
+import com.example.ui.components.*
 import com.example.ui.theme.*
 import kotlinx.coroutines.launch
 
@@ -42,7 +41,14 @@ fun BackpackScreen(
           .fillMaxWidth()
           .statusBarsPadding()
       ) {
-        LivoTopBar(title = "Backpack & Frames", onBackClick = onBackClick)
+        LivoTopBar(
+          title = "Backpack & Frames",
+          onBackClick = onBackClick,
+          actions = {
+            LivoBrandLogo(size = 30.dp, showGlow = false)
+            Spacer(modifier = Modifier.width(12.dp))
+          }
+        )
       }
     },
     containerColor = DarkBackground

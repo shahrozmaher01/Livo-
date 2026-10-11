@@ -36,9 +36,13 @@ class Converters {
     NotificationEntity::class,
     ReportEntity::class,
     BlockEntity::class,
-    AuditLogEntity::class
+    AuditLogEntity::class,
+    PanelConfigEntity::class,
+    PanelTemplateEntity::class,
+    UserPanelAssignmentEntity::class,
+    SystemCurrencySettingsEntity::class
   ],
-  version = 1,
+  version = 2,
   exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -48,6 +52,8 @@ abstract class LivoDatabase : RoomDatabase() {
   abstract fun messageDao(): MessageDao
   abstract fun walletDao(): WalletDao
   abstract fun socialDao(): SocialDao
+  abstract fun panelDao(): PanelDao
+
 
   companion object {
     @Volatile

@@ -21,9 +21,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.AgencyEntity
 import com.example.data.repository.LivoRepository
-import com.example.ui.components.EmptyStateView
-import com.example.ui.components.LivoButton
-import com.example.ui.components.LivoTopBar
+import com.example.ui.components.*
 import com.example.ui.theme.*
 import kotlinx.coroutines.launch
 
@@ -51,6 +49,8 @@ fun AgencyScreen(
             IconButton(onClick = { showJoinAgencyDialog = true }) {
               Icon(Icons.Default.Add, contentDescription = "Join Agency", tint = LivoCyan)
             }
+            LivoBrandLogo(size = 30.dp, showGlow = false)
+            Spacer(modifier = Modifier.width(12.dp))
           }
         )
       }

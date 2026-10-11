@@ -1,13 +1,22 @@
 package com.example.ui.navigation
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.PersonOutline
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -15,6 +24,7 @@ import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.*
 import androidx.navigation.navArgument
+import com.example.R
 import com.example.data.model.UserEntity
 import com.example.data.repository.LivoRepository
 import com.example.ui.components.UserProfileSheet
@@ -22,6 +32,7 @@ import com.example.ui.screens.admin.AdminPanelScreen
 import com.example.ui.screens.agency.AgencyScreen
 import com.example.ui.screens.auth.LoginScreen
 import com.example.ui.screens.events.EventsScreen
+import com.example.ui.screens.explore.ExploreScreen
 import com.example.ui.screens.home.HomeScreen
 import com.example.ui.screens.home.SearchScreen
 import com.example.ui.screens.messages.ChatDetailScreen
@@ -30,6 +41,7 @@ import com.example.ui.screens.notifications.NotificationsScreen
 import com.example.ui.screens.profile.BackpackScreen
 import com.example.ui.screens.profile.ProfileScreen
 import com.example.ui.screens.rankings.RankingsScreen
+import com.example.ui.screens.reels.ReelsScreen
 import com.example.ui.screens.room.VoiceRoomScreen
 import com.example.ui.screens.wallet.WalletScreen
 import com.example.ui.theme.*
@@ -69,7 +81,7 @@ fun LivoNavGraph(
           onOpenRoom = { roomId -> navController.navigate(Screen.VoiceRoom.createRoute(roomId)) },
           onOpenSearch = { navController.navigate(Screen.Search.route) },
           onOpenWallet = { navController.navigate(Screen.Wallet.route) },
-          onOpenRankings = { /* Tab handles this or direct */ },
+          onOpenRankings = { navController.navigate(Screen.Rankings.route) },
           onOpenNotifications = { navController.navigate(Screen.Notifications.route) },
           onOpenEvents = { navController.navigate(Screen.Events.route) },
           onOpenAgency = { navController.navigate(Screen.Agency.route) },
@@ -171,6 +183,25 @@ fun LivoNavGraph(
           onBackClick = { navController.popBackStack() }
         )
       }
+
+      // 12. Rankings Screen
+      composable(Screen.Rankings.route) {
+        RankingsScreen(
+          repository = repository,
+          onOpenUserProfile = { user -> inspectedUser = user },
+          onOpenRoom = { roomId -> navController.navigate(Screen.VoiceRoom.createRoute(roomId)) }
+        )
+      }
+
+      // 13. Reels Screen
+      composable(Screen.Reels.route) {
+        ReelsScreen(
+          repository = repository,
+          onOpenSearch = { navController.navigate(Screen.Search.route) },
+          onOpenNotifications = { navController.navigate(Screen.Notifications.route) },
+          onBackClick = { navController.popBackStack() }
+        )
+      }
     }
 
     // Modal user profile sheet
@@ -207,83 +238,127 @@ fun MainTabContainer(
   var selectedTab by remember { mutableStateOf(BottomTab.HOME) }
   val unreadMessages by repository.totalUnreadMessages.collectAsState(initial = 0)
 
+  val GoldActive = Color(0xFFF5BA42)
+  val InactiveTab = Color(0xFF9E9EA7)
+
   Scaffold(
     bottomBar = {
-      NavigationBar(
-        containerColor = DarkSurface,
+      Surface(
+        color = Color(0xFF070A14),
         tonalElevation = 8.dp,
-        modifier = Modifier.windowInsetsPadding(WindowInsets.navigationBars)
+        border = BorderStroke(0.6.dp, Color(0xFF161F33)),
+        modifier = Modifier.fillMaxWidth()
       ) {
-        NavigationBarItem(
-          selected = selectedTab == BottomTab.HOME,
-          onClick = { selectedTab = BottomTab.HOME },
-          icon = { Icon(Icons.Default.Explore, contentDescription = "Home") },
-          label = { Text("Home", fontWeight = FontWeight.Bold, fontSize = 11.sp) },
-          colors = NavigationBarItemDefaults.colors(
-            selectedIconColor = LivoViolet,
-            selectedTextColor = LivoViolet,
-            indicatorColor = DarkSurfaceElevated,
-            unselectedIconColor = TextTertiary,
-            unselectedTextColor = TextTertiary
-          )
-        )
-
-        NavigationBarItem(
-          selected = selectedTab == BottomTab.RANKINGS,
-          onClick = { selectedTab = BottomTab.RANKINGS },
-          icon = { Icon(Icons.Default.Leaderboard, contentDescription = "Leaderboards") },
-          label = { Text("Ranks", fontWeight = FontWeight.Bold, fontSize = 11.sp) },
-          colors = NavigationBarItemDefaults.colors(
-            selectedIconColor = LivoGold,
-            selectedTextColor = LivoGold,
-            indicatorColor = DarkSurfaceElevated,
-            unselectedIconColor = TextTertiary,
-            unselectedTextColor = TextTertiary
-          )
-        )
-
-        NavigationBarItem(
-          selected = selectedTab == BottomTab.MESSAGES,
-          onClick = { selectedTab = BottomTab.MESSAGES },
-          icon = {
-            BadgedBox(
-              badge = {
-                if (unreadMessages > 0) {
-                  Badge(containerColor = LivoRose) {
-                    Text("$unreadMessages")
-                  }
-                }
-              }
-            ) {
-              Icon(Icons.Default.ChatBubble, contentDescription = "Messages")
+        Row(
+          horizontalArrangement = Arrangement.SpaceAround,
+          verticalAlignment = Alignment.CenterVertically,
+          modifier = Modifier
+            .fillMaxWidth()
+            .windowInsetsPadding(WindowInsets.navigationBars)
+            .height(58.dp)
+        ) {
+          // 1. Home Tab
+          BottomTabItem(
+            label = "Home",
+            isSelected = selectedTab == BottomTab.HOME,
+            activeColor = Color(0xFF818CF8),
+            inactiveColor = Color(0xFF718096),
+            showIndicator = true,
+            onClick = { selectedTab = BottomTab.HOME },
+            icon = {
+              Icon(
+                imageVector = Icons.Filled.Home,
+                contentDescription = "Home",
+                tint = if (selectedTab == BottomTab.HOME) Color.White else Color(0xFF718096),
+                modifier = Modifier.size(22.dp)
+              )
             }
-          },
-          label = { Text("Messages", fontWeight = FontWeight.Bold, fontSize = 11.sp) },
-          colors = NavigationBarItemDefaults.colors(
-            selectedIconColor = LivoCyan,
-            selectedTextColor = LivoCyan,
-            indicatorColor = DarkSurfaceElevated,
-            unselectedIconColor = TextTertiary,
-            unselectedTextColor = TextTertiary
           )
-        )
 
-        NavigationBarItem(
-          selected = selectedTab == BottomTab.PROFILE,
-          onClick = { selectedTab = BottomTab.PROFILE },
-          icon = { Icon(Icons.Default.Person, contentDescription = "Profile") },
-          label = { Text("Me", fontWeight = FontWeight.Bold, fontSize = 11.sp) },
-          colors = NavigationBarItemDefaults.colors(
-            selectedIconColor = LivoViolet,
-            selectedTextColor = LivoViolet,
-            indicatorColor = DarkSurfaceElevated,
-            unselectedIconColor = TextTertiary,
-            unselectedTextColor = TextTertiary
+          // 2. Moment Tab (Sparkles icon like screenshot)
+          BottomTabItem(
+            label = "Moment",
+            isSelected = selectedTab == BottomTab.MOMENT,
+            activeColor = Color(0xFF818CF8),
+            inactiveColor = Color(0xFF718096),
+            showIndicator = true,
+            onClick = { selectedTab = BottomTab.MOMENT },
+            icon = {
+              Icon(
+                imageVector = Icons.Filled.AutoAwesome,
+                contentDescription = "Moment",
+                tint = if (selectedTab == BottomTab.MOMENT) Color.White else Color(0xFF718096),
+                modifier = Modifier.size(20.dp)
+              )
+            }
           )
-        )
+
+          // 3. Explore Tab (Compass)
+          BottomTabItem(
+            label = "Explore",
+            isSelected = selectedTab == BottomTab.EXPLORE,
+            activeColor = Color(0xFF818CF8),
+            inactiveColor = Color(0xFF718096),
+            showIndicator = true,
+            onClick = { selectedTab = BottomTab.EXPLORE },
+            icon = {
+              Icon(
+                imageVector = Icons.Filled.Explore,
+                contentDescription = "Explore",
+                tint = if (selectedTab == BottomTab.EXPLORE) Color.White else Color(0xFF718096),
+                modifier = Modifier.size(22.dp)
+              )
+            }
+          )
+
+          // 4. Chat Tab (ChatBubble with red dot)
+          BottomTabItem(
+            label = "Chat",
+            isSelected = selectedTab == BottomTab.CHAT,
+            activeColor = Color(0xFF818CF8),
+            inactiveColor = Color(0xFF718096),
+            showIndicator = true,
+            badgeCount = unreadMessages.coerceAtLeast(1),
+            onClick = { selectedTab = BottomTab.CHAT },
+            icon = {
+              Icon(
+                imageVector = Icons.Filled.ChatBubble,
+                contentDescription = "Chat",
+                tint = if (selectedTab == BottomTab.CHAT) Color.White else Color(0xFF718096),
+                modifier = Modifier.size(20.dp)
+              )
+            }
+          )
+
+          // 5. Me Tab (Glowing purple avatar highlight matching screenshot)
+          BottomTabItem(
+            label = "Me",
+            isSelected = selectedTab == BottomTab.ME,
+            activeColor = Color(0xFFC084FC),
+            inactiveColor = Color(0xFF718096),
+            showIndicator = true,
+            onClick = { selectedTab = BottomTab.ME },
+            icon = {
+              Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                  .size(28.dp)
+                  .clip(CircleShape)
+                  .background(if (selectedTab == BottomTab.ME) Color(0xFF9333EA) else Color.Transparent)
+              ) {
+                Icon(
+                  imageVector = Icons.Filled.Person,
+                  contentDescription = "Me",
+                  tint = if (selectedTab == BottomTab.ME) Color.White else Color(0xFF718096),
+                  modifier = Modifier.size(18.dp)
+                )
+              }
+            }
+          )
+        }
       }
     },
-    containerColor = DarkBackground
+    containerColor = Color.Black
   ) { innerPadding ->
     Box(
       modifier = Modifier
@@ -297,36 +372,107 @@ fun MainTabContainer(
             onOpenRoom = onOpenRoom,
             onOpenSearch = onOpenSearch,
             onOpenWallet = onOpenWallet,
-            onOpenRankings = { selectedTab = BottomTab.RANKINGS },
+            onOpenRankings = onOpenRankings,
             onOpenNotifications = onOpenNotifications,
             onOpenEvents = onOpenEvents,
-            onOpenAgency = onOpenAgency
+            onOpenAgency = onOpenAgency,
+            onOpenReels = { selectedTab = BottomTab.MOMENT }
           )
         }
-        BottomTab.RANKINGS -> {
-          RankingsScreen(
+        BottomTab.MOMENT -> {
+          ReelsScreen(
             repository = repository,
-            onOpenUserProfile = onOpenUserProfile,
-            onOpenRoom = onOpenRoom
+            onOpenSearch = onOpenSearch,
+            onOpenNotifications = onOpenNotifications,
+            onBackClick = { selectedTab = BottomTab.HOME }
           )
         }
-        BottomTab.MESSAGES -> {
+        BottomTab.EXPLORE -> {
+          ExploreScreen(
+            repository = repository,
+            onOpenRoom = onOpenRoom,
+            onOpenSearch = onOpenSearch,
+            onOpenRankings = onOpenRankings,
+            onOpenEvents = onOpenEvents,
+            onOpenUserProfile = onOpenUserProfile
+          )
+        }
+        BottomTab.CHAT -> {
           MessagesScreen(
             repository = repository,
             onOpenChat = onOpenChat
           )
         }
-        BottomTab.PROFILE -> {
+        BottomTab.ME -> {
           ProfileScreen(
             repository = repository,
             onOpenWallet = onOpenWallet,
             onOpenBackpack = onOpenBackpack,
             onOpenAgency = onOpenAgency,
             onOpenAdminPanel = onOpenAdminPanel,
+            onOpenRoom = onOpenRoom,
             onLogout = onLogout
           )
         }
       }
+    }
+  }
+}
+
+@Composable
+private fun BottomTabItem(
+  label: String,
+  isSelected: Boolean,
+  activeColor: Color,
+  inactiveColor: Color,
+  showIndicator: Boolean,
+  badgeCount: Int = 0,
+  onClick: () -> Unit,
+  icon: @Composable () -> Unit
+) {
+  Column(
+    horizontalAlignment = Alignment.CenterHorizontally,
+    verticalArrangement = Arrangement.Center,
+    modifier = Modifier
+      .clickable(onClick = onClick)
+      .padding(horizontal = 16.dp, vertical = 4.dp)
+  ) {
+    Box {
+      icon()
+      if (badgeCount > 0) {
+        Box(
+          modifier = Modifier
+            .align(Alignment.TopEnd)
+            .offset(x = 6.dp, y = (-3).dp)
+            .size(8.dp)
+            .clip(CircleShape)
+            .background(Color(0xFFF43F5E))
+        )
+      }
+    }
+
+    Spacer(modifier = Modifier.height(3.dp))
+
+    Text(
+      text = label,
+      color = if (isSelected) activeColor else inactiveColor,
+      fontSize = 11.sp,
+      fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+    )
+
+    Spacer(modifier = Modifier.height(2.dp))
+
+    // Golden underline bar when selected and showIndicator is true
+    if (isSelected && showIndicator) {
+      Box(
+        modifier = Modifier
+          .width(22.dp)
+          .height(2.dp)
+          .clip(RoundedCornerShape(1.dp))
+          .background(activeColor)
+      )
+    } else {
+      Spacer(modifier = Modifier.height(2.dp))
     }
   }
 }

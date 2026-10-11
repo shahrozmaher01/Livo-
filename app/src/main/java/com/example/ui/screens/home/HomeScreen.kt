@@ -1,18 +1,19 @@
 package com.example.ui.screens.home
 
 import android.widget.Toast
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -23,20 +24,22 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.R
+import com.example.data.model.ReelEntity
 import com.example.data.model.RoomCategory
 import com.example.data.model.RoomEntity
 import com.example.data.repository.LivoRepository
 import com.example.ui.components.*
+import com.example.ui.screens.reels.ReelsScreen
 import com.example.ui.theme.*
 import kotlinx.coroutines.launch
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
   repository: LivoRepository,
@@ -46,288 +49,72 @@ fun HomeScreen(
   onOpenRankings: () -> Unit,
   onOpenNotifications: () -> Unit,
   onOpenEvents: () -> Unit,
-  onOpenAgency: () -> Unit
+  onOpenAgency: () -> Unit,
+  onOpenReels: () -> Unit = {}
 ) {
   val context = LocalContext.current
   val coroutineScope = rememberCoroutineScope()
   val currentUser by repository.currentUser.collectAsState()
   val activeRooms by repository.activeRooms.collectAsState(initial = emptyList())
   val wallet by repository.observeWallet(currentUser?.id ?: "").collectAsState(initial = null)
-  val unreadNotifications by repository.observeUnreadNotificationsCount(currentUser?.id ?: "").collectAsState(initial = 0)
 
-  var selectedCategory by remember { mutableStateOf<RoomCategory?>(null) }
+  var selectedCategory by remember { mutableStateOf("All") }
   var showCreateRoomDialog by remember { mutableStateOf(false) }
+  var showAllRoomsDialog by remember { mutableStateOf(false) }
+  var selectedReelIndex by remember { mutableStateOf<Int?>(null) }
 
-  val filteredRooms = remember(activeRooms, selectedCategory) {
-    if (selectedCategory == null) activeRooms
-    else activeRooms.filter { it.category == selectedCategory }
-  }
+  // Golden Luxury Theme Colors matching the user's screenshot
+  val GoldAccent = Color(0xFFF5BA42)
+  val GoldDarkBorder = Color(0xFFE5A93C)
+  val DarkCardBg = Color(0xFF14131A)
+  val DarkPillBg = Color(0xFF16151E)
+  val BorderSubtle = Color(0xFF282834)
 
-  Scaffold(
-    topBar = {
-      // Premium Voice Chat Header
-      Surface(
-        color = DarkBackground,
-        modifier = Modifier.fillMaxWidth()
-      ) {
+  Box(
+    modifier = Modifier
+      .fillMaxSize()
+      .background(Color.Black)
+  ) {
+    LazyColumn(
+      contentPadding = PaddingValues(bottom = 24.dp),
+      modifier = Modifier.fillMaxSize()
+    ) {
+      // 1. Top Search Bar
+      item {
         Column(
           modifier = Modifier
             .fillMaxWidth()
             .statusBarsPadding()
-            .padding(horizontal = 16.dp, vertical = 10.dp)
+            .padding(horizontal = 16.dp, vertical = 6.dp)
         ) {
-          Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-            modifier = Modifier.fillMaxWidth()
-          ) {
-            // User identity overview
-            Row(verticalAlignment = Alignment.CenterVertically) {
-              AvatarWithFrame(
-                avatarUrl = currentUser?.avatarUrl ?: "",
-                frameId = currentUser?.equippedFrameId,
-                size = 46.dp
-              )
-              Spacer(modifier = Modifier.width(10.dp))
-              Column {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                  Text(
-                    text = currentUser?.nickname ?: "Guest",
-                    color = TextPrimary,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 15.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                  )
-                  Spacer(modifier = Modifier.width(6.dp))
-                  LevelBadge(level = currentUser?.level ?: 1)
-                }
-                Text(
-                  text = "ID: ${currentUser?.livoId ?: 0}",
-                  color = TextTertiary,
-                  fontSize = 11.sp
-                )
-              }
-            }
-
-            // Wallet Coins & Notifications
-            Row(verticalAlignment = Alignment.CenterVertically) {
-              CoinPill(
-                balance = wallet?.balance ?: 0,
-                onClick = onOpenWallet
-              )
-
-              Spacer(modifier = Modifier.width(10.dp))
-
-              // Notification bell with red dot badge
-              Box {
-                IconButton(
-                  onClick = onOpenNotifications,
-                  modifier = Modifier
-                    .size(38.dp)
-                    .clip(CircleShape)
-                    .background(DarkSurfaceElevated)
-                ) {
-                  Icon(
-                    imageVector = Icons.Default.Notifications,
-                    contentDescription = "Notifications",
-                    tint = TextPrimary,
-                    modifier = Modifier.size(20.dp)
-                  )
-                }
-                if (unreadNotifications > 0) {
-                  Box(
-                    modifier = Modifier
-                      .align(Alignment.TopEnd)
-                      .size(10.dp)
-                      .clip(CircleShape)
-                      .background(LivoRose)
-                  )
-                }
-              }
-            }
-          }
-
-          Spacer(modifier = Modifier.height(14.dp))
-
-          // Search Trigger Bar
           Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
               .fillMaxWidth()
               .height(44.dp)
-              .clip(RoundedCornerShape(14.dp))
-              .background(DarkSurfaceElevated)
+              .clip(RoundedCornerShape(24.dp))
+              .background(Color(0xFF141419))
+              .border(BorderStroke(1.dp, BorderSubtle), RoundedCornerShape(24.dp))
               .clickable { onOpenSearch() }
-              .padding(horizontal = 14.dp)
+              .padding(horizontal = 16.dp)
           ) {
             Icon(
               imageVector = Icons.Default.Search,
               contentDescription = "Search",
-              tint = TextSecondary,
-              modifier = Modifier.size(20.dp)
+              tint = Color(0xFF7A7A85),
+              modifier = Modifier.size(18.dp)
             )
             Spacer(modifier = Modifier.width(10.dp))
             Text(
-              text = "Search by Room ID, room name, or Livo ID...",
-              color = TextSecondary,
-              fontSize = 13.sp
-            )
-          }
-        }
-      }
-    },
-    floatingActionButton = {
-      ExtendedFloatingActionButton(
-        onClick = { showCreateRoomDialog = true },
-        containerColor = LivoViolet,
-        contentColor = Color.White,
-        shape = RoundedCornerShape(18.dp)
-      ) {
-        Icon(Icons.Default.Add, contentDescription = "Create Room")
-        Spacer(modifier = Modifier.width(8.dp))
-        Text("Create Room", fontWeight = FontWeight.Bold)
-      }
-    },
-    containerColor = DarkBackground
-  ) { innerPadding ->
-    LazyColumn(
-      contentPadding = PaddingValues(bottom = 90.dp),
-      modifier = Modifier
-        .fillMaxSize()
-        .padding(innerPadding)
-    ) {
-      // 1. Featured Event Banner (Voice Carnival)
-      item {
-        Box(
-          modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp)
-            .height(130.dp)
-            .clip(RoundedCornerShape(18.dp))
-            .clickable { onOpenEvents() }
-        ) {
-          // Bundled event illustration
-          Image(
-            painter = painterResource(id = R.drawable.banner_voice_carnival),
-            contentDescription = "Livo Voice Festival",
-            contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxSize()
-          )
-          Box(
-            modifier = Modifier
-              .fillMaxSize()
-              .background(
-                Brush.verticalGradient(
-                  listOf(Color.Transparent, Color(0xCC000000))
-                )
-              )
-          )
-          Column(
-            modifier = Modifier
-              .align(Alignment.BottomStart)
-              .padding(14.dp)
-          ) {
-            Surface(
-              shape = RoundedCornerShape(6.dp),
-              color = LivoRose
-            ) {
-              Text(
-                text = "LIVE EVENT",
-                color = Color.White,
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-              )
-            }
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-              text = "Livo Summer Voice Carnival",
-              color = Color.White,
-              fontWeight = FontWeight.Bold,
-              fontSize = 16.sp
-            )
-            Text(
-              text = "Win exclusive Royal Crown frames & millions in coins!",
-              color = TextSecondary,
-              fontSize = 11.sp
+              text = "Search...",
+              color = Color(0xFF7A7A85),
+              fontSize = 14.sp
             )
           }
         }
       }
 
-      // 2. Quick Discovery Actions
-      item {
-        Row(
-          horizontalArrangement = Arrangement.SpaceBetween,
-          modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 10.dp)
-        ) {
-          QuickActionItem(
-            icon = Icons.Default.Leaderboard,
-            title = "Leaderboards",
-            tint = LivoGold,
-            onClick = onOpenRankings
-          )
-          QuickActionItem(
-            icon = Icons.Default.Groups,
-            title = "Agencies",
-            tint = LivoCyan,
-            onClick = onOpenAgency
-          )
-          QuickActionItem(
-            icon = Icons.Default.Celebration,
-            title = "Events",
-            tint = LivoRose,
-            onClick = onOpenEvents
-          )
-          QuickActionItem(
-            icon = Icons.Default.AccountBalanceWallet,
-            title = "Wallet",
-            tint = LivoVioletLight,
-            onClick = onOpenWallet
-          )
-        }
-      }
-
-      // 3. Category Filter Chips
-      item {
-        LazyRow(
-          contentPadding = PaddingValues(horizontal = 16.dp),
-          horizontalArrangement = Arrangement.spacedBy(8.dp),
-          modifier = Modifier.padding(vertical = 8.dp)
-        ) {
-          item {
-            FilterChip(
-              selected = selectedCategory == null,
-              onClick = { selectedCategory = null },
-              label = { Text("All Rooms", fontSize = 12.sp) },
-              colors = FilterChipDefaults.filterChipColors(
-                selectedContainerColor = LivoViolet,
-                selectedLabelColor = Color.White,
-                containerColor = DarkSurfaceElevated,
-                labelColor = TextSecondary
-              )
-            )
-          }
-          items(RoomCategory.values()) { cat ->
-            FilterChip(
-              selected = selectedCategory == cat,
-              onClick = { selectedCategory = cat },
-              label = { Text(cat.displayName, fontSize = 12.sp) },
-              colors = FilterChipDefaults.filterChipColors(
-                selectedContainerColor = LivoViolet,
-                selectedLabelColor = Color.White,
-                containerColor = DarkSurfaceElevated,
-                labelColor = TextSecondary
-              )
-            )
-          }
-        }
-      }
-
-      // 4. Room List Header
+      // 2. Header Bar: Crowned 'L' + "L Voice" on left, Home & Reel icons on right
       item {
         Row(
           verticalAlignment = Alignment.CenterVertically,
@@ -336,304 +123,768 @@ fun HomeScreen(
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 6.dp)
         ) {
-          Text(
-            text = "Active Voice Rooms",
-            color = TextPrimary,
-            fontWeight = FontWeight.Bold,
-            fontSize = 17.sp
-          )
-          Text(
-            text = "${filteredRooms.size} online",
-            color = OnlineGreen,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.SemiBold
+          // Brand Logo: Crowned golden L + golden italic script "L Voice"
+          Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.clickable { onOpenEvents() }
+          ) {
+            Image(
+              painter = painterResource(id = R.drawable.ic_l_voice_crown),
+              contentDescription = "L Voice Emblem",
+              contentScale = ContentScale.Fit,
+              modifier = Modifier.size(42.dp)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+              text = "L Voice",
+              color = Color(0xFFF3C775),
+              fontSize = 24.sp,
+              fontWeight = FontWeight.Bold,
+              fontStyle = FontStyle.Italic,
+              letterSpacing = 0.5.sp
+            )
+          }
+
+          // Right Icons: Home & Reel clapperboard
+          Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
+          ) {
+            IconButton(
+              onClick = { /* Stay on Home */ },
+              modifier = Modifier.size(28.dp)
+            ) {
+              Icon(
+                imageVector = Icons.Outlined.Home,
+                contentDescription = "Home",
+                tint = Color.White.copy(alpha = 0.9f),
+                modifier = Modifier.size(24.dp)
+              )
+            }
+
+            IconButton(
+              onClick = onOpenReels,
+              modifier = Modifier.size(28.dp)
+            ) {
+              Icon(
+                painter = painterResource(id = R.drawable.ic_reel),
+                contentDescription = "Reel",
+                tint = Color.White.copy(alpha = 0.9f),
+                modifier = Modifier.size(22.dp)
+              )
+            }
+          }
+        }
+      }
+
+      // 3. Featured Hero Event Banner: "Good Vibes Better Conversations ♥"
+      item {
+        Box(
+          modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .height(160.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .border(
+              BorderStroke(0.6.dp, GoldAccent.copy(alpha = 0.35f)),
+              RoundedCornerShape(16.dp)
+            )
+            .clickable { onOpenEvents() }
+        ) {
+          Image(
+            painter = painterResource(id = R.drawable.banner_good_vibes),
+            contentDescription = "Good Vibes Better Conversations",
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize()
           )
         }
       }
 
-      // 5. Room Cards Grid/List
-      if (filteredRooms.isEmpty()) {
-        item {
-          EmptyStateView(
-            icon = Icons.Default.RecordVoiceOver,
-            title = "No active voice rooms yet",
-            description = "Be the first to open a voice chat room and invite friends to talk!",
-            actionButtonText = "Create Voice Room",
-            onActionClick = { showCreateRoomDialog = true }
+      // 4. Ranking Widget Pill: Crown "Ranking >" + Top 3 Rank Podiums
+      item {
+        Card(
+          shape = RoundedCornerShape(16.dp),
+          colors = CardDefaults.cardColors(containerColor = DarkCardBg),
+          border = BorderStroke(1.dp, Color(0xFF423824)),
+          modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 6.dp)
+            .clickable { onOpenRankings() }
+        ) {
+          Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+            modifier = Modifier
+              .fillMaxWidth()
+              .padding(horizontal = 12.dp, vertical = 10.dp)
+          ) {
+            // Left "Ranking >"
+            Row(
+              verticalAlignment = Alignment.CenterVertically,
+              modifier = Modifier.padding(end = 4.dp)
+            ) {
+              Icon(
+                painter = painterResource(id = R.drawable.ic_crown),
+                contentDescription = "Crown",
+                tint = GoldAccent,
+                modifier = Modifier.size(18.dp)
+              )
+              Spacer(modifier = Modifier.width(6.dp))
+              Text(
+                text = "Ranking",
+                color = GoldAccent,
+                fontWeight = FontWeight.Bold,
+                fontSize = 14.sp
+              )
+              Spacer(modifier = Modifier.width(3.dp))
+              Text(
+                text = ">",
+                color = GoldAccent,
+                fontWeight = FontWeight.Bold,
+                fontSize = 13.sp
+              )
+            }
+
+            // Top 3 Podium Users
+            Row(
+              verticalAlignment = Alignment.CenterVertically,
+              horizontalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+              // Rank 1
+              RankUserPodiumItem(
+                rankNumber = 1,
+                crownColor = Color(0xFFF5BA42),
+                score = "2.8M",
+                avatarRes = null
+              )
+
+              // Rank 2 (Cat Avatar from screenshot)
+              RankUserPodiumItem(
+                rankNumber = 2,
+                crownColor = Color(0xFFE2E8F0),
+                score = "2.1M",
+                avatarRes = R.drawable.avatar_rank_cat
+              )
+
+              // Rank 3
+              RankUserPodiumItem(
+                rankNumber = 3,
+                crownColor = Color(0xFFCD7F32),
+                score = "1.6M",
+                avatarRes = null
+              )
+            }
+          }
+        }
+      }
+
+      // 5. Top Categories Header
+      item {
+        Row(
+          verticalAlignment = Alignment.CenterVertically,
+          horizontalArrangement = Arrangement.SpaceBetween,
+          modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 8.dp)
+        ) {
+          Text(
+            text = "Top Categories",
+            color = Color.White,
+            fontWeight = FontWeight.Bold,
+            fontSize = 16.sp
+          )
+
+          Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.clickable { showAllRoomsDialog = true }
+          ) {
+            Text(
+              text = "More",
+              color = Color(0xFF8E8E93),
+              fontSize = 13.sp
+            )
+            Spacer(modifier = Modifier.width(2.dp))
+            Text(
+              text = ">",
+              color = Color(0xFF8E8E93),
+              fontSize = 12.sp
+            )
+          }
+        }
+      }
+
+      // 6. Top Categories Chips (Two-row layout as in screenshot)
+      item {
+        Column(
+          verticalArrangement = Arrangement.spacedBy(8.dp),
+          modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp)
+        ) {
+          // Row 1: All, Pakistan, India
+          Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxWidth()
+          ) {
+            CategoryChip(
+              title = "All",
+              emoji = "🔥",
+              isSelected = selectedCategory == "All",
+              modifier = Modifier.weight(1.1f),
+              onClick = { selectedCategory = "All" }
+            )
+            CategoryChip(
+              title = "Pakistan",
+              emoji = "🇵🇰",
+              isSelected = selectedCategory == "Pakistan",
+              modifier = Modifier.weight(1.3f),
+              onClick = { selectedCategory = "Pakistan" }
+            )
+            CategoryChip(
+              title = "India",
+              emoji = "🇮🇳",
+              isSelected = selectedCategory == "India",
+              modifier = Modifier.weight(1.2f),
+              onClick = { selectedCategory = "India" }
+            )
+          }
+
+          // Row 2: Bangladesh, Nepal
+          Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxWidth()
+          ) {
+            CategoryChip(
+              title = "Bangladesh",
+              emoji = "🇧🇩",
+              isSelected = selectedCategory == "Bangladesh",
+              modifier = Modifier.weight(1.4f),
+              onClick = { selectedCategory = "Bangladesh" }
+            )
+            CategoryChip(
+              title = "Nepal",
+              emoji = "🇳🇵",
+              isSelected = selectedCategory == "Nepal",
+              modifier = Modifier.weight(1.2f),
+              onClick = { selectedCategory = "Nepal" }
+            )
+            Spacer(modifier = Modifier.weight(1.2f))
+          }
+        }
+      }
+
+      // 7. Reels Section Header
+      item {
+        Row(
+          verticalAlignment = Alignment.CenterVertically,
+          modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 10.dp)
+        ) {
+          Icon(
+            painter = painterResource(id = R.drawable.ic_reel),
+            contentDescription = "Reels",
+            tint = Color.White,
+            modifier = Modifier.size(20.dp)
+          )
+          Spacer(modifier = Modifier.width(8.dp))
+          Text(
+            text = "Reels",
+            color = Color.White,
+            fontWeight = FontWeight.Bold,
+            fontSize = 18.sp
           )
         }
-      } else {
-        items(filteredRooms) { room ->
+      }
+
+      // 8. 2-Column Reels Grid (Card 1, Card 2, Card 3, Card 4)
+      item {
+        val reelsList by repository.reels.collectAsState()
+        if (reelsList.isNotEmpty()) {
+          Column(
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier
+              .fillMaxWidth()
+              .padding(horizontal = 16.dp)
+          ) {
+            // Row 1: First 2 reels
+            Row(
+              horizontalArrangement = Arrangement.spacedBy(10.dp),
+              modifier = Modifier.fillMaxWidth()
+            ) {
+              if (reelsList.isNotEmpty()) {
+                ReelCardItem(
+                  reel = reelsList[0],
+                  modifier = Modifier.weight(1f),
+                  onClick = { selectedReelIndex = 0 }
+                )
+              }
+              if (reelsList.size > 1) {
+                ReelCardItem(
+                  reel = reelsList[1],
+                  modifier = Modifier.weight(1f),
+                  onClick = { selectedReelIndex = 1 }
+                )
+              }
+            }
+
+            // Row 2: Next 2 reels
+            if (reelsList.size > 2) {
+              Row(
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.fillMaxWidth()
+              ) {
+                ReelCardItem(
+                  reel = reelsList[2],
+                  modifier = Modifier.weight(1f),
+                  onClick = { selectedReelIndex = 2 }
+                )
+                if (reelsList.size > 3) {
+                  ReelCardItem(
+                    reel = reelsList[3],
+                    modifier = Modifier.weight(1f),
+                    onClick = { selectedReelIndex = 3 }
+                  )
+                } else {
+                  Spacer(modifier = Modifier.weight(1f))
+                }
+              }
+            }
+          }
+        }
+      }
+
+      // 9. Active Voice Rooms List (real persistent rooms accessible directly from home)
+      if (activeRooms.isNotEmpty()) {
+        item {
+          Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+            modifier = Modifier
+              .fillMaxWidth()
+              .padding(start = 16.dp, end = 16.dp, top = 22.dp, bottom = 8.dp)
+          ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+              Icon(
+                imageVector = Icons.Default.GraphicEq,
+                contentDescription = null,
+                tint = GoldAccent,
+                modifier = Modifier.size(18.dp)
+              )
+              Spacer(modifier = Modifier.width(6.dp))
+              Text(
+                text = "Live Voice Chat Rooms",
+                color = Color.White,
+                fontWeight = FontWeight.Bold,
+                fontSize = 16.sp
+              )
+            }
+            Text(
+              text = "${activeRooms.size} online",
+              color = SpeakingGreen,
+              fontSize = 12.sp,
+              fontWeight = FontWeight.SemiBold
+            )
+          }
+        }
+
+        items(activeRooms) { room ->
           RoomCard(
             room = room,
             onClick = { onOpenRoom(room.id) },
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 5.dp)
           )
         }
       }
     }
-  }
 
-  // Create Room Dialog
-  if (showCreateRoomDialog) {
-    var title by remember { mutableStateOf("") }
-    var selectedCat by remember { mutableStateOf(RoomCategory.CHAT) }
-    var seatCount by remember { mutableStateOf(8) }
-    var announcement by remember { mutableStateOf("") }
-
-    AlertDialog(
-      onDismissRequest = { showCreateRoomDialog = false },
-      containerColor = DarkSurfaceElevated,
-      title = {
-        Text("Create Live Voice Room", color = TextPrimary, fontWeight = FontWeight.Bold)
-      },
-      text = {
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-          OutlinedTextField(
-            value = title,
-            onValueChange = { title = it },
-            label = { Text("Room Title") },
-            placeholder = { Text("e.g., Midnight Chill & Music") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth()
-          )
-
-          Text("Category", fontSize = 12.sp, color = TextSecondary)
-          Row(
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            modifier = Modifier.fillMaxWidth()
-          ) {
-            RoomCategory.values().take(3).forEach { cat ->
-              Surface(
-                shape = RoundedCornerShape(8.dp),
-                color = if (selectedCat == cat) LivoViolet else DarkSurfaceCard,
-                modifier = Modifier
-                  .weight(1f)
-                  .clickable { selectedCat = cat }
-                  .padding(vertical = 4.dp)
-              ) {
-                Text(
-                  text = cat.displayName.substringBefore(" "),
-                  color = Color.White,
-                  fontSize = 11.sp,
-                  textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                  modifier = Modifier.padding(vertical = 8.dp)
-                )
-              }
-            }
-          }
-
-          Text("Seat Capacity", fontSize = 12.sp, color = TextSecondary)
-          Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf(8, 10, 12).forEach { count ->
-              Surface(
-                shape = RoundedCornerShape(8.dp),
-                color = if (seatCount == count) LivoCyan else DarkSurfaceCard,
-                modifier = Modifier
-                  .clickable { seatCount = count }
-                  .padding(vertical = 2.dp)
-              ) {
-                Text(
-                  text = "$count Seats",
-                  color = if (seatCount == count) Color.Black else TextPrimary,
-                  fontSize = 12.sp,
-                  fontWeight = FontWeight.Bold,
-                  modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                )
-              }
-            }
-          }
-
-          OutlinedTextField(
-            value = announcement,
-            onValueChange = { announcement = it },
-            label = { Text("Announcement / Notice") },
-            placeholder = { Text("Welcome rules for room guests") },
-            maxLines = 2,
-            modifier = Modifier.fillMaxWidth()
-          )
-        }
-      },
-      confirmButton = {
-        Button(
-          onClick = {
-            if (title.isNotBlank()) {
-              coroutineScope.launch {
-                val created = repository.createRoom(
-                  title = title,
-                  category = selectedCat,
-                  coverUrl = "",
-                  backgroundUrl = "",
-                  announcement = announcement,
-                  seatCount = seatCount
-                )
-                showCreateRoomDialog = false
-                onOpenRoom(created.id)
-              }
-            } else {
-              Toast.makeText(context, "Please enter a room title", Toast.LENGTH_SHORT).show()
-            }
-          },
-          colors = ButtonDefaults.buttonColors(containerColor = LivoViolet)
-        ) {
-          Text("Go Live")
-        }
-      },
-      dismissButton = {
-        TextButton(onClick = { showCreateRoomDialog = false }) {
-          Text("Cancel", color = TextSecondary)
-        }
+    // Full-screen Reel Viewer Dialog when tapped
+    if (selectedReelIndex != null) {
+      Box(modifier = Modifier.fillMaxSize()) {
+        ReelsScreen(
+          repository = repository,
+          initialReelIndex = selectedReelIndex ?: 0,
+          onBackClick = { selectedReelIndex = null }
+        )
       }
-    )
+    }
+
+    // Create Room Dialog
+    if (showCreateRoomDialog) {
+      CreateRoomDialog(
+        onDismiss = { showCreateRoomDialog = false },
+        onCreate = { title, announcement, category ->
+          coroutineScope.launch {
+            try {
+              val created = repository.createRoom(
+                title = title,
+                category = category,
+                coverUrl = "",
+                backgroundUrl = "",
+                announcement = announcement
+              )
+              showCreateRoomDialog = false
+              onOpenRoom(created.id)
+            } catch (e: Exception) {
+              Toast.makeText(context, e.message ?: "Failed to create room", Toast.LENGTH_SHORT).show()
+            }
+          }
+        }
+      )
+    }
+
+    // All Rooms / More Categories Dialog
+    if (showAllRoomsDialog) {
+      AlertDialog(
+        onDismissRequest = { showAllRoomsDialog = false },
+        containerColor = DarkCardBg,
+        title = {
+          Text("All Voice Categories", color = Color.White, fontWeight = FontWeight.Bold)
+        },
+        text = {
+          Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            RoomCategory.values().forEach { cat ->
+              val emoji = when (cat) {
+                RoomCategory.CHAT -> "💬"
+                RoomCategory.MUSIC -> "🎵"
+                RoomCategory.GAMING -> "🎮"
+                RoomCategory.KARAOKE -> "🎤"
+                RoomCategory.DATING -> "💖"
+                RoomCategory.RADIO -> "📻"
+              }
+              Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = Color(0xFF1B1A24),
+                modifier = Modifier
+                  .fillMaxWidth()
+                  .clickable {
+                    selectedCategory = cat.displayName
+                    showAllRoomsDialog = false
+                  }
+                  .padding(12.dp)
+              ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                  Text(emoji, fontSize = 20.sp)
+                  Spacer(modifier = Modifier.width(10.dp))
+                  Column {
+                    Text(cat.displayName, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Text("Browse active rooms", color = Color.Gray, fontSize = 11.sp)
+                  }
+                }
+              }
+            }
+          }
+        },
+        confirmButton = {
+          TextButton(onClick = { showAllRoomsDialog = false }) {
+            Text("Close", color = GoldAccent)
+          }
+        }
+      )
+    }
   }
 }
 
 @Composable
-private fun QuickActionItem(
-  icon: androidx.compose.ui.graphics.vector.ImageVector,
+private fun RankUserPodiumItem(
+  rankNumber: Int,
+  crownColor: Color,
+  score: String,
+  avatarRes: Int? = null
+) {
+  Row(
+    verticalAlignment = Alignment.CenterVertically,
+    horizontalArrangement = Arrangement.spacedBy(4.dp)
+  ) {
+    // Avatar with mini crown overlay
+    Box(
+      contentAlignment = Alignment.TopStart,
+      modifier = Modifier.size(34.dp)
+    ) {
+      if (avatarRes != null) {
+        Image(
+          painter = painterResource(id = avatarRes),
+          contentDescription = "Rank $rankNumber Avatar",
+          contentScale = ContentScale.Crop,
+          modifier = Modifier
+            .size(30.dp)
+            .align(Alignment.Center)
+            .clip(CircleShape)
+            .border(1.dp, crownColor, CircleShape)
+        )
+      } else {
+        Box(
+          contentAlignment = Alignment.Center,
+          modifier = Modifier
+            .size(30.dp)
+            .align(Alignment.Center)
+            .clip(CircleShape)
+            .background(
+              Brush.linearGradient(
+                listOf(Color(0xFF382E1E), Color(0xFF1E1A2B))
+              )
+            )
+            .border(1.dp, crownColor, CircleShape)
+        ) {
+          Icon(
+            imageVector = Icons.Default.Person,
+            contentDescription = null,
+            tint = crownColor,
+            modifier = Modifier.size(18.dp)
+          )
+        }
+      }
+
+      // Small Crown
+      Icon(
+        painter = painterResource(id = R.drawable.ic_crown),
+        contentDescription = "Crown",
+        tint = crownColor,
+        modifier = Modifier
+          .size(12.dp)
+          .align(Alignment.TopStart)
+      )
+    }
+
+    // Rank Number
+    Text(
+      text = "$rankNumber",
+      color = Color.White,
+      fontSize = 11.sp,
+      fontWeight = FontWeight.Bold
+    )
+
+    // Fire Score
+    Row(verticalAlignment = Alignment.CenterVertically) {
+      Text(text = "🔥", fontSize = 9.sp)
+      Text(
+        text = score,
+        color = Color(0xFFE2E8F0),
+        fontSize = 10.sp,
+        fontWeight = FontWeight.SemiBold
+      )
+    }
+  }
+}
+
+@Composable
+private fun CategoryChip(
   title: String,
-  tint: Color,
+  emoji: String,
+  isSelected: Boolean,
+  modifier: Modifier = Modifier,
   onClick: () -> Unit
 ) {
-  Column(
-    horizontalAlignment = Alignment.CenterHorizontally,
-    modifier = Modifier
-      .clip(RoundedCornerShape(12.dp))
-      .clickable(onClick = onClick)
-      .padding(8.dp)
-  ) {
-    Box(
-      contentAlignment = Alignment.Center,
-      modifier = Modifier
-        .size(48.dp)
-        .clip(CircleShape)
-        .background(tint.copy(alpha = 0.15f))
-    ) {
-      Icon(imageVector = icon, contentDescription = title, tint = tint, modifier = Modifier.size(24.dp))
-    }
-    Spacer(modifier = Modifier.height(6.dp))
-    Text(text = title, color = TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.Medium)
-  }
-}
-
-@Composable
-fun RoomCard(
-  room: RoomEntity,
-  onClick: () -> Unit,
-  modifier: Modifier = Modifier
-) {
-  Card(
-    shape = RoundedCornerShape(18.dp),
-    colors = CardDefaults.cardColors(containerColor = DarkSurfaceCard),
-    border = androidx.compose.foundation.BorderStroke(1.dp, DarkSurfaceBorder),
+  Surface(
+    shape = RoundedCornerShape(14.dp),
+    color = if (isSelected) Color(0xFF261D0C) else Color(0xFF16151E),
+    border = BorderStroke(
+      width = if (isSelected) 1.2.dp else 0.8.dp,
+      color = if (isSelected) Color(0xFFE5A93C) else Color(0xFF2A2838)
+    ),
     modifier = modifier
-      .fillMaxWidth()
+      .height(38.dp)
       .clickable(onClick = onClick)
   ) {
     Row(
       verticalAlignment = Alignment.CenterVertically,
-      modifier = Modifier.padding(14.dp)
+      horizontalArrangement = Arrangement.Center,
+      modifier = Modifier
+        .fillMaxSize()
+        .padding(horizontal = 10.dp)
     ) {
-      // Room cover with listener badge
+      Text(text = emoji, fontSize = 13.sp)
+      Spacer(modifier = Modifier.width(6.dp))
+      Text(
+        text = title,
+        color = if (isSelected) Color(0xFFFDE68A) else Color.White,
+        fontSize = 12.sp,
+        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+        maxLines = 1
+      )
+    }
+  }
+}
+
+@Composable
+private fun ReelCardItem(
+  reel: ReelEntity,
+  modifier: Modifier = Modifier,
+  onClick: () -> Unit
+) {
+  val imageRes = when (reel.coverDrawableName) {
+    "reel_bg_dreamer_girl" -> R.drawable.reel_bg_dreamer_girl
+    "reel_thumb_silence" -> R.drawable.reel_thumb_silence
+    "reel_thumb_music" -> R.drawable.reel_thumb_music
+    "reel_thumb_friendship" -> R.drawable.reel_thumb_friendship
+    "reel_thumb_dreams" -> R.drawable.reel_thumb_dreams
+    else -> R.drawable.reel_bg_dreamer_girl
+  }
+
+  Card(
+    shape = RoundedCornerShape(14.dp),
+    colors = CardDefaults.cardColors(containerColor = Color(0xFF16151E)),
+    modifier = modifier
+      .fillMaxWidth()
+      .clickable(onClick = onClick)
+  ) {
+    Column {
+      // Reel Video Cover Box
       Box(
         modifier = Modifier
-          .size(76.dp)
-          .clip(RoundedCornerShape(14.dp))
+          .fillMaxWidth()
+          .aspectRatio(1.15f)
+          .clip(RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp))
       ) {
-        AsyncImage(
-          model = room.coverUrl.ifBlank { "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=400" },
-          contentDescription = room.title,
+        Image(
+          painter = painterResource(id = imageRes),
+          contentDescription = reel.caption,
           contentScale = ContentScale.Crop,
           modifier = Modifier.fillMaxSize()
         )
-        // Live wave indicator
+
+        // Bottom gradient for view count readability
+        Box(
+          modifier = Modifier
+            .fillMaxSize()
+            .background(
+              Brush.verticalGradient(
+                colors = listOf(
+                  Color.Transparent,
+                  Color(0xAA000000)
+                ),
+                startY = 60f
+              )
+            )
+        )
+
+        // "Reel" Pill Badge at Top Right
         Surface(
-          shape = RoundedCornerShape(bottomStart = 8.dp),
-          color = Color(0xCC000000),
-          modifier = Modifier.align(Alignment.TopEnd)
+          shape = RoundedCornerShape(6.dp),
+          color = Color(0x99000000),
+          modifier = Modifier
+            .align(Alignment.TopEnd)
+            .padding(6.dp)
         ) {
-          Row(
-            verticalAlignment = Alignment.CenterVertically,
+          Text(
+            text = "Reel",
+            color = Color.White,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Medium,
             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-          ) {
-            Box(
-              modifier = Modifier
-                .size(6.dp)
-                .clip(CircleShape)
-                .background(SpeakingGreen)
-            )
-            Spacer(modifier = Modifier.width(4.dp))
-            Text(
-              text = "${room.listenersCount}",
-              color = Color.White,
-              fontSize = 10.sp,
-              fontWeight = FontWeight.Bold
-            )
-          }
+          )
         }
-      }
 
-      Spacer(modifier = Modifier.width(14.dp))
-
-      // Room info details
-      Column(modifier = Modifier.weight(1f)) {
+        // Bottom Stats Row (Play icon + Views on left, Duration on right)
         Row(
           verticalAlignment = Alignment.CenterVertically,
           horizontalArrangement = Arrangement.SpaceBetween,
-          modifier = Modifier.fillMaxWidth()
+          modifier = Modifier
+            .fillMaxWidth()
+            .align(Alignment.BottomCenter)
+            .padding(horizontal = 8.dp, vertical = 6.dp)
         ) {
-          Text(
-            text = room.title,
-            color = TextPrimary,
-            fontWeight = FontWeight.Bold,
-            fontSize = 15.sp,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f)
-          )
-          Surface(
-            shape = RoundedCornerShape(6.dp),
-            color = LivoViolet.copy(alpha = 0.2f)
-          ) {
+          Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+              imageVector = Icons.Default.PlayArrow,
+              contentDescription = null,
+              tint = Color.White,
+              modifier = Modifier.size(12.dp)
+            )
+            Spacer(modifier = Modifier.width(3.dp))
             Text(
-              text = room.category.displayName.substringBefore(" "),
-              color = LivoVioletLight,
+              text = formatReelCount(reel.viewsCount),
+              color = Color.White,
               fontSize = 10.sp,
-              fontWeight = FontWeight.SemiBold,
-              modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+              fontWeight = FontWeight.SemiBold
             )
           }
-        }
 
-        Spacer(modifier = Modifier.height(4.dp))
-
-        Text(
-          text = "ID: ${room.roomNumber} • ${room.seatCount} Seats",
-          color = TextTertiary,
-          fontSize = 11.sp
-        )
-
-        Spacer(modifier = Modifier.height(6.dp))
-
-        Row(verticalAlignment = Alignment.CenterVertically) {
-          AsyncImage(
-            model = room.ownerAvatar,
-            contentDescription = room.ownerName,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier
-              .size(18.dp)
-              .clip(CircleShape)
-          )
-          Spacer(modifier = Modifier.width(6.dp))
           Text(
-            text = "Host: ${room.ownerName}",
-            color = TextSecondary,
-            fontSize = 12.sp,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
+            text = "00:${reel.durationSec.toString().padStart(2, '0')}",
+            color = Color.White,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Normal
           )
         }
       }
+
+      // Reel Caption Below Image
+      Text(
+        text = reel.caption,
+        color = Color(0xFFE2E8F0),
+        fontSize = 11.sp,
+        lineHeight = 14.sp,
+        maxLines = 2,
+        overflow = TextOverflow.Ellipsis,
+        modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp)
+      )
     }
   }
+}
+
+private fun formatReelCount(count: Long): String {
+  return when {
+    count >= 1_000_000 -> String.format(java.util.Locale.US, "%.1fM", count / 1_000_000.0).replace(".0M", "M")
+    count >= 1_000 -> String.format(java.util.Locale.US, "%.1fK", count / 1_000.0).replace(".0K", "K")
+    else -> "$count"
+  }
+}
+
+@Composable
+private fun CreateRoomDialog(
+  onDismiss: () -> Unit,
+  onCreate: (title: String, announcement: String, category: RoomCategory) -> Unit
+) {
+  var title by remember { mutableStateOf("") }
+  var announcement by remember { mutableStateOf("") }
+  var selectedCategory by remember { mutableStateOf(RoomCategory.CHAT) }
+
+  AlertDialog(
+    onDismissRequest = onDismiss,
+    containerColor = Color(0xFF14131A),
+    title = {
+      Row(verticalAlignment = Alignment.CenterVertically) {
+        LivoBrandLogo(size = 24.dp, showGlow = false)
+        Spacer(modifier = Modifier.width(8.dp))
+        Text("Create Voice Room", color = Color.White, fontWeight = FontWeight.Bold)
+      }
+    },
+    text = {
+      Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        OutlinedTextField(
+          value = title,
+          onValueChange = { title = it },
+          label = { Text("Room Name") },
+          placeholder = { Text("e.g. Late Night Hangout") },
+          singleLine = true,
+          modifier = Modifier.fillMaxWidth()
+        )
+        OutlinedTextField(
+          value = announcement,
+          onValueChange = { announcement = it },
+          label = { Text("Announcement / Rules") },
+          placeholder = { Text("Welcome to our voice room!") },
+          modifier = Modifier.fillMaxWidth()
+        )
+      }
+    },
+    confirmButton = {
+      Button(
+        onClick = {
+          if (title.isNotBlank()) {
+            onCreate(title.trim(), announcement.trim(), selectedCategory)
+          }
+        },
+        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF5BA42))
+      ) {
+        Text("Create", color = Color.Black, fontWeight = FontWeight.Bold)
+      }
+    },
+    dismissButton = {
+      TextButton(onClick = onDismiss) {
+        Text("Cancel", color = Color.Gray)
+      }
+    }
+  )
 }

@@ -28,8 +28,7 @@ import com.example.data.model.COINS_PER_USD
 import com.example.data.model.CoinTransactionEntity
 import com.example.data.model.RechargePackage
 import com.example.data.repository.LivoRepository
-import com.example.ui.components.EmptyStateView
-import com.example.ui.components.LivoTopBar
+import com.example.ui.components.*
 import com.example.ui.theme.*
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -56,7 +55,14 @@ fun WalletScreen(
           .fillMaxWidth()
           .statusBarsPadding()
       ) {
-        LivoTopBar(title = "Livo Wallet", onBackClick = onBackClick)
+        LivoTopBar(
+          title = "Livo Wallet",
+          onBackClick = onBackClick,
+          actions = {
+            LivoBrandLogo(size = 30.dp, showGlow = false)
+            Spacer(modifier = Modifier.width(12.dp))
+          }
+        )
       }
     },
     containerColor = DarkBackground
@@ -106,13 +112,19 @@ fun WalletScreen(
                   shape = RoundedCornerShape(8.dp),
                   color = LivoGold.copy(alpha = 0.2f)
                 ) {
-                  Text(
-                    text = "VERIFIED LEDGER",
-                    color = LivoGold,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
+                  Row(
+                    verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                  )
+                  ) {
+                    LivoBrandLogo(size = 16.dp, showGlow = false)
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                      text = "VERIFIED LEDGER",
+                      color = LivoGold,
+                      fontSize = 10.sp,
+                      fontWeight = FontWeight.Bold
+                    )
+                  }
                 }
               }
 

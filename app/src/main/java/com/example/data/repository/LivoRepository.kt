@@ -125,6 +125,9 @@ class LivoRepository(
     database.userDao().observeAllUsers().firstOrNull() ?: emptyList()
   }
 
+  fun observeAllUsers(): kotlinx.coroutines.flow.Flow<List<UserEntity>> =
+    database.userDao().observeAllUsers()
+
   fun logout() {
     val current = _currentUser.value
     if (current != null) {
@@ -915,6 +918,141 @@ class LivoRepository(
   }
 
   // ==========================================================================
+  // Real Statistics, User Room & Real Follows
+  // ==========================================================================
+  fun observeFollowingCount(userId: String): Flow<Int> =
+    database.userDao().observeFollowingCount(userId)
+
+  fun observeFollowersCount(userId: String): Flow<Int> =
+    database.userDao().observeFollowersCount(userId)
+
+  fun observeUserRoom(userId: String): Flow<RoomEntity?> =
+    database.roomDao().observeRoomByOwnerId(userId)
+
+  suspend fun getUserRoom(userId: String): RoomEntity? = withContext(Dispatchers.IO) {
+    database.roomDao().getRoomByOwnerId(userId)
+  }
+
+  suspend fun getUserAgencyMembership(userId: String): AgencyMemberEntity? = withContext(Dispatchers.IO) {
+    database.socialDao().getUserAgencyMembership(userId)
+  }
+
+  // ==========================================================================
+  // Store Purchases & Inventory
+  // ==========================================================================
+  suspend fun purchaseStoreItem(itemId: String, itemName: String, price: Long): Result<String> = withContext(Dispatchers.IO) {
+    val user = _currentUser.value ?: return@withContext Result.failure(IllegalStateException("Not logged in"))
+    val wallet = database.walletDao().getWallet(user.id) ?: return@withContext Result.failure(IllegalStateException("Wallet not initialized"))
+
+    if (wallet.balance < price) {
+      return@withContext Result.failure(IllegalStateException("Insufficient coins. Balance: ${wallet.balance}, required: $price"))
+    }
+
+    val newBalance = wallet.balance - price
+    database.walletDao().insertOrUpdateWallet(
+      wallet.copy(balance = newBalance, totalSpent = wallet.totalSpent + price, updatedAt = System.currentTimeMillis())
+    )
+
+    database.walletDao().insertTransaction(
+      CoinTransactionEntity(
+        transactionId = "TX-BUY-${UUID.randomUUID().toString().take(10)}",
+        userId = user.id,
+        amount = -price,
+        balanceBefore = wallet.balance,
+        balanceAfter = newBalance,
+        type = "PURCHASE",
+        description = "Purchased $itemName"
+      )
+    )
+
+    database.socialDao().insertInventoryItem(
+      UserInventoryEntity(
+        userId = user.id,
+        itemId = itemId,
+        itemName = itemName,
+        itemType = "AVATAR_FRAME",
+        isEquipped = true
+      )
+    )
+
+    // Equip frame immediately
+    database.socialDao().unequipAllFrames(user.id)
+    database.socialDao().equipFrame(user.id, itemId)
+    val updatedUser = user.copy(equippedFrameId = itemId)
+    database.userDao().updateUser(updatedUser)
+    _currentUser.value = updatedUser
+
+    Result.success("Purchased and equipped $itemName!")
+  }
+
+  // ==========================================================================
+  // User Feedback
+  // ==========================================================================
+  suspend fun submitFeedback(category: String, message: String): Result<String> = withContext(Dispatchers.IO) {
+    val user = _currentUser.value ?: return@withContext Result.failure(IllegalStateException("Not logged in"))
+    database.socialDao().insertReport(
+      ReportEntity(
+        reporterId = user.id,
+        reporterName = user.nickname,
+        targetType = "FEEDBACK",
+        targetId = "PLATFORM",
+        targetName = "Livo Platform",
+        reason = category,
+        details = message.trim()
+      )
+    )
+    Result.success("Feedback submitted successfully. Thank you!")
+  }
+
+  // ==========================================================================
+  // CP Partner Relationship Management
+  // ==========================================================================
+  private val cpPrefs = context.getSharedPreferences("livo_cp_prefs", Context.MODE_PRIVATE)
+
+  fun getCpPartner(userId: String): CpPartnerInfo? {
+    val partnerId = cpPrefs.getString("cp_${userId}_id", null) ?: return null
+    val partnerName = cpPrefs.getString("cp_${userId}_name", "") ?: ""
+    val partnerAvatar = cpPrefs.getString("cp_${userId}_avatar", "") ?: ""
+    val partnerLivoId = cpPrefs.getLong("cp_${userId}_livoid", 0L)
+    val relationType = cpPrefs.getString("cp_${userId}_type", "Sweet CP 💕") ?: "Sweet CP 💕"
+    val affinity = cpPrefs.getLong("cp_${userId}_affinity", 520L)
+    return CpPartnerInfo(
+      partnerId = partnerId,
+      partnerName = partnerName,
+      partnerAvatar = partnerAvatar,
+      partnerLivoId = partnerLivoId,
+      relationshipType = relationType,
+      affinityScore = affinity
+    )
+  }
+
+  fun bindCpPartner(partner: UserEntity, relationType: String): Result<String> {
+    val user = _currentUser.value ?: return Result.failure(IllegalStateException("Not logged in"))
+    cpPrefs.edit()
+      .putString("cp_${user.id}_id", partner.id)
+      .putString("cp_${user.id}_name", partner.nickname)
+      .putString("cp_${user.id}_avatar", partner.avatarUrl)
+      .putLong("cp_${user.id}_livoid", partner.livoId)
+      .putString("cp_${user.id}_type", relationType)
+      .putLong("cp_${user.id}_affinity", 520L)
+      .apply()
+    return Result.success("Bound $relationType with ${partner.nickname}!")
+  }
+
+  fun unbindCpPartner(): Result<String> {
+    val user = _currentUser.value ?: return Result.failure(IllegalStateException("Not logged in"))
+    cpPrefs.edit()
+      .remove("cp_${user.id}_id")
+      .remove("cp_${user.id}_name")
+      .remove("cp_${user.id}_avatar")
+      .remove("cp_${user.id}_livoid")
+      .remove("cp_${user.id}_type")
+      .remove("cp_${user.id}_affinity")
+      .apply()
+    return Result.success("CP relationship disbanded.")
+  }
+
+  // ==========================================================================
   // Initial Catalog Seeding (Production-quality bootstrap)
   // ==========================================================================
   private suspend fun seedInitialDataIfNeeded() {
@@ -1080,4 +1218,342 @@ class LivoRepository(
       )
     )
   }
+
+  // ==========================================================================
+  // 13. Reels, Stories, Likes, Comments & Video Upload System
+  // ==========================================================================
+  private val _reelsList = MutableStateFlow<List<ReelEntity>>(
+    listOf(
+      ReelEntity(
+        id = "reel_1",
+        creatorId = "user_dreamer",
+        creatorName = "dreamer_girl",
+        creatorAvatar = "reel_bg_dreamer_girl",
+        coverDrawableName = "reel_bg_dreamer_girl",
+        caption = "Some moments are just special... ♥",
+        hashtags = "#sunset #vibes #peace #lvoice",
+        musicTitle = "Original Audio - dreamer_girl",
+        durationSec = 28,
+        viewsCount = 128400,
+        likesCount = 128000,
+        commentsCount = 2400,
+        sharesCount = 12000,
+        isLiked = false,
+        isSaved = false,
+        isFollowing = false
+      ),
+      ReelEntity(
+        id = "reel_2",
+        creatorId = "user_silent",
+        creatorName = "silent_wanderer",
+        creatorAvatar = "reel_thumb_silence",
+        coverDrawableName = "reel_thumb_silence",
+        caption = "Sometimes silence speaks louder than words... ♥",
+        hashtags = "#mountains #citylights #night",
+        musicTitle = "Night Whispers Lo-Fi",
+        durationSec = 28,
+        viewsCount = 84200,
+        likesCount = 12400,
+        commentsCount = 520,
+        sharesCount = 3400,
+        isLiked = false,
+        isSaved = false,
+        isFollowing = true
+      ),
+      ReelEntity(
+        id = "reel_3",
+        creatorId = "user_melodic",
+        creatorName = "melodic_soul",
+        creatorAvatar = "reel_thumb_music",
+        coverDrawableName = "reel_thumb_music",
+        caption = "Good music\nBetter mood... 🎵",
+        hashtags = "#sunsetbeats #musiclover",
+        musicTitle = "Acoustic Sunset Melody 🎸",
+        durationSec = 36,
+        viewsCount = 95400,
+        likesCount = 18700,
+        commentsCount = 840,
+        sharesCount = 4200,
+        isLiked = true,
+        isSaved = false,
+        isFollowing = false
+      ),
+      ReelEntity(
+        id = "reel_4",
+        creatorId = "user_squad",
+        creatorName = "golden_squad",
+        creatorAvatar = "reel_thumb_friendship",
+        coverDrawableName = "reel_thumb_friendship",
+        caption = "Friendship\nForever... ♥",
+        hashtags = "#squadgoals #forever #goldenhour",
+        musicTitle = "Memories of Summer 🌅",
+        durationSec = 31,
+        viewsCount = 112000,
+        likesCount = 31600,
+        commentsCount = 1530,
+        sharesCount = 6700,
+        isLiked = false,
+        isSaved = true,
+        isFollowing = true
+      ),
+      ReelEntity(
+        id = "reel_5",
+        creatorId = "user_cozy",
+        creatorName = "cozy_diaries",
+        creatorAvatar = "reel_thumb_dreams",
+        coverDrawableName = "reel_thumb_dreams",
+        caption = "Small steps\nBig dreams... ✨",
+        hashtags = "#latte #cozyvibes #journaling",
+        musicTitle = "Coffee Shop Acoustic Notes ☕",
+        durationSec = 22,
+        viewsCount = 68000,
+        likesCount = 27100,
+        commentsCount = 1120,
+        sharesCount = 5100,
+        isLiked = false,
+        isSaved = false,
+        isFollowing = false
+      )
+    )
+  )
+  val reels: StateFlow<List<ReelEntity>> = _reelsList.asStateFlow()
+
+  private val _storiesList = MutableStateFlow<List<StoryEntity>>(
+    listOf(
+      StoryEntity(
+        id = "story_mine",
+        userId = "me",
+        userName = "Your Story",
+        userAvatar = "reel_bg_dreamer_girl",
+        mediaDrawableName = "reel_bg_dreamer_girl",
+        caption = "Golden sunset at the bay",
+        isViewed = false,
+        isMine = true
+      ),
+      StoryEntity(
+        id = "story_ayesha",
+        userId = "user_ayesha",
+        userName = "Ayesha",
+        userAvatar = "story_avatar_daisy",
+        mediaDrawableName = "story_avatar_daisy",
+        caption = "Spring blossoms are in full bloom 🌼",
+        isViewed = false
+      ),
+      StoryEntity(
+        id = "story_zainab",
+        userId = "user_zainab",
+        userName = "Zainab",
+        userAvatar = "story_avatar_butterfly",
+        mediaDrawableName = "story_avatar_butterfly",
+        caption = "Night fairy lights ✨🦋",
+        isViewed = false
+      ),
+      StoryEntity(
+        id = "story_hira",
+        userId = "user_hira",
+        userName = "Hira",
+        userAvatar = "reel_thumb_silence",
+        mediaDrawableName = "reel_thumb_silence",
+        caption = "Peaceful dusk view 🌅",
+        isViewed = false
+      ),
+      StoryEntity(
+        id = "story_sara",
+        userId = "user_sara",
+        userName = "Sara",
+        userAvatar = "reel_thumb_music",
+        mediaDrawableName = "reel_thumb_music",
+        caption = "Chill playlist session 🎧",
+        isViewed = true
+      )
+    )
+  )
+  val stories: StateFlow<List<StoryEntity>> = _storiesList.asStateFlow()
+
+  private val _commentsMap = MutableStateFlow<Map<String, List<ReelCommentEntity>>>(
+    mapOf(
+      "reel_1" to listOf(
+        ReelCommentEntity(
+          id = "c_1",
+          reelId = "reel_1",
+          userId = "u_zainab",
+          userName = "Zainab",
+          userAvatar = "story_avatar_butterfly",
+          content = "This view is breathtaking! The butterfly hair clip is so pretty 🦋✨",
+          likesCount = 342,
+          isLiked = true
+        ),
+        ReelCommentEntity(
+          id = "c_2",
+          reelId = "reel_1",
+          userId = "u_ayesha",
+          userName = "Ayesha",
+          userAvatar = "story_avatar_daisy",
+          content = "Such serene vibes... where was this recorded? 😍",
+          likesCount = 189,
+          isLiked = false
+        ),
+        ReelCommentEntity(
+          id = "c_3",
+          reelId = "reel_1",
+          userId = "u_ali",
+          userName = "Ali Raza",
+          userAvatar = "",
+          content = "L Voice audio quality sounds crystal clear here! 🎙️",
+          likesCount = 76,
+          isLiked = false
+        )
+      )
+    )
+  )
+
+  fun observeComments(reelId: String): Flow<List<ReelCommentEntity>> {
+    return _commentsMap.map { map -> map[reelId] ?: emptyList() }
+  }
+
+  suspend fun toggleLikeReel(reelId: String) = withContext(Dispatchers.IO) {
+    _reelsList.update { list ->
+      list.map { r ->
+        if (r.id == reelId) {
+          val newLiked = !r.isLiked
+          val newCount = if (newLiked) r.likesCount + 1 else (r.likesCount - 1).coerceAtLeast(0)
+          r.copy(isLiked = newLiked, likesCount = newCount)
+        } else r
+      }
+    }
+  }
+
+  suspend fun toggleBookmarkReel(reelId: String) = withContext(Dispatchers.IO) {
+    _reelsList.update { list ->
+      list.map { r ->
+        if (r.id == reelId) {
+          r.copy(isSaved = !r.isSaved)
+        } else r
+      }
+    }
+  }
+
+  suspend fun toggleFollowCreator(creatorName: String) = withContext(Dispatchers.IO) {
+    _reelsList.update { list ->
+      list.map { r ->
+        if (r.creatorName == creatorName) {
+          r.copy(isFollowing = !r.isFollowing)
+        } else r
+      }
+    }
+  }
+
+  suspend fun addComment(reelId: String, content: String): ReelCommentEntity = withContext(Dispatchers.IO) {
+    val user = _currentUser.value
+    val newComment = ReelCommentEntity(
+      reelId = reelId,
+      userId = user?.id ?: "guest",
+      userName = user?.nickname ?: "Guest_User",
+      userAvatar = user?.avatarUrl ?: "",
+      content = content.trim()
+    )
+
+    _commentsMap.update { map ->
+      val currentList = map[reelId] ?: emptyList()
+      map + (reelId to (listOf(newComment) + currentList))
+    }
+
+    _reelsList.update { list ->
+      list.map { r ->
+        if (r.id == reelId) r.copy(commentsCount = r.commentsCount + 1) else r
+      }
+    }
+
+    newComment
+  }
+
+  suspend fun deleteComment(reelId: String, commentId: String) = withContext(Dispatchers.IO) {
+    _commentsMap.update { map ->
+      val currentList = map[reelId] ?: emptyList()
+      map + (reelId to currentList.filterNot { it.id == commentId })
+    }
+    _reelsList.update { list ->
+      list.map { r ->
+        if (r.id == reelId) r.copy(commentsCount = (r.commentsCount - 1).coerceAtLeast(0)) else r
+      }
+    }
+  }
+
+  suspend fun toggleLikeComment(reelId: String, commentId: String) = withContext(Dispatchers.IO) {
+    _commentsMap.update { map ->
+      val currentList = map[reelId] ?: emptyList()
+      map + (reelId to currentList.map { c ->
+        if (c.id == commentId) {
+          val newLiked = !c.isLiked
+          val newLikes = if (newLiked) c.likesCount + 1 else (c.likesCount - 1).coerceAtLeast(0)
+          c.copy(isLiked = newLiked, likesCount = newLikes)
+        } else c
+      })
+    }
+  }
+
+  suspend fun uploadReel(
+    caption: String,
+    videoUri: String,
+    hashtags: String,
+    privacy: String = "PUBLIC"
+  ): ReelEntity = withContext(Dispatchers.IO) {
+    val user = _currentUser.value
+    val newReel = ReelEntity(
+      id = "reel_${System.currentTimeMillis()}",
+      creatorId = user?.id ?: "me",
+      creatorName = user?.nickname ?: "My_Profile",
+      creatorAvatar = user?.avatarUrl ?: "reel_bg_dreamer_girl",
+      coverDrawableName = "reel_bg_dreamer_girl",
+      videoUri = videoUri,
+      caption = caption.trim(),
+      hashtags = hashtags.trim().ifBlank { "#lvoice #reels" },
+      musicTitle = "Original Audio - ${user?.nickname ?: "L Voice"}",
+      durationSec = 15,
+      viewsCount = 1,
+      likesCount = 0,
+      commentsCount = 0,
+      sharesCount = 0,
+      privacy = privacy
+    )
+
+    _reelsList.update { listOf(newReel) + it }
+    newReel
+  }
+
+  suspend fun addStory(mediaUri: String, caption: String): StoryEntity = withContext(Dispatchers.IO) {
+    val user = _currentUser.value
+    val newStory = StoryEntity(
+      id = "story_${System.currentTimeMillis()}",
+      userId = user?.id ?: "me",
+      userName = user?.nickname ?: "Your Story",
+      userAvatar = user?.avatarUrl ?: "story_avatar_butterfly",
+      mediaDrawableName = "story_avatar_butterfly",
+      caption = caption.trim(),
+      isViewed = false,
+      isMine = true
+    )
+
+    _storiesList.update { list ->
+      listOf(newStory) + list.filterNot { it.isMine }
+    }
+    newStory
+  }
+
+  suspend fun markStoryViewed(storyId: String) = withContext(Dispatchers.IO) {
+    _storiesList.update { list ->
+      list.map { s ->
+        if (s.id == storyId) s.copy(isViewed = true) else s
+      }
+    }
+  }
+
+  suspend fun incrementShareCount(reelId: String) = withContext(Dispatchers.IO) {
+    _reelsList.update { list ->
+      list.map { r ->
+        if (r.id == reelId) r.copy(sharesCount = r.sharesCount + 1) else r
+      }
+    }
+  }
 }
+

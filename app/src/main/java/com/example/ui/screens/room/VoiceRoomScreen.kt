@@ -188,8 +188,10 @@ fun VoiceRoomScreen(
               ) {
                 Row(
                   verticalAlignment = Alignment.CenterVertically,
-                  modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                  modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
                 ) {
+                  LivoBrandLogo(size = 28.dp, showGlow = false)
+                  Spacer(modifier = Modifier.width(8.dp))
                   Column {
                     Text(
                       text = currentRoom?.title ?: "Livo Room",
@@ -966,7 +968,11 @@ fun VoiceRoomScreen(
       onDismissRequest = { showSettingsDialog = false },
       containerColor = DarkSurfaceElevated,
       title = {
-        Text("Room Customization", color = TextPrimary, fontWeight = FontWeight.Bold)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+          LivoBrandLogo(size = 24.dp, showGlow = false)
+          Spacer(modifier = Modifier.width(8.dp))
+          Text("Room Settings & Rules", color = TextPrimary, fontWeight = FontWeight.Bold)
+        }
       },
       text = {
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {

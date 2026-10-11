@@ -17,11 +17,19 @@ sealed class Screen(val route: String) {
   object Events : Screen("events")
   object Notifications : Screen("notifications")
   object EditProfile : Screen("edit_profile")
+  object Rankings : Screen("rankings")
+  object Reels : Screen("reels")
 }
 
 enum class BottomTab(val title: String) {
   HOME("Home"),
-  RANKINGS("Ranks"),
-  MESSAGES("Messages"),
-  PROFILE("Me")
+  MOMENT("Moment"),
+  EXPLORE("Explore"),
+  CHAT("Chat"),
+  ME("Me");
+
+  companion object {
+    val REEL get() = MOMENT
+    val PROFILE get() = ME
+  }
 }

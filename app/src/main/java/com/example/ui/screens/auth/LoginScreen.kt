@@ -34,9 +34,7 @@ import androidx.credentials.exceptions.GetCredentialException
 import com.example.R
 import com.example.data.model.UserEntity
 import com.example.data.repository.LivoRepository
-import com.example.ui.components.AvatarWithFrame
-import com.example.ui.components.LivoButton
-import com.example.ui.components.RoleBadge
+import com.example.ui.components.*
 import com.example.ui.theme.*
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
@@ -127,33 +125,10 @@ fun LoginScreen(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier.padding(top = 24.dp)
       ) {
-        Box(
-          contentAlignment = Alignment.Center,
-          modifier = Modifier
-            .size(92.dp)
-            .clip(RoundedCornerShape(26.dp))
-            .background(
-              Brush.linearGradient(
-                listOf(LivoViolet, LivoCyan)
-              )
-            )
-            .padding(2.dp)
-        ) {
-          Box(
-            contentAlignment = Alignment.Center,
-            modifier = Modifier
-              .fillMaxSize()
-              .clip(RoundedCornerShape(24.dp))
-              .background(DarkBackground)
-          ) {
-            Icon(
-              imageVector = Icons.Default.GraphicEq,
-              contentDescription = "Livo Soundwaves",
-              tint = LivoCyan,
-              modifier = Modifier.size(54.dp)
-            )
-          }
-        }
+        LivoBrandLogo(
+          size = 100.dp,
+          showGlow = true
+        )
 
         Spacer(modifier = Modifier.height(20.dp))
 

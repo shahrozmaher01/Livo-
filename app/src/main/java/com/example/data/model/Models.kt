@@ -359,3 +359,157 @@ data class AuditLogEntity(
   val details: String,
   val timestamp: Long = System.currentTimeMillis()
 )
+
+// ============================================================================
+// 13. Reels, Stories, Likes & Comments System
+// ============================================================================
+@Entity(tableName = "reels")
+data class ReelEntity(
+  @PrimaryKey val id: String = UUID.randomUUID().toString(),
+  val creatorId: String,
+  val creatorName: String,
+  val creatorAvatar: String = "",
+  val coverDrawableName: String = "reel_bg_dreamer_girl",
+  val videoUri: String = "",
+  val caption: String,
+  val hashtags: String = "#sunset #vibes #lvoice",
+  val musicTitle: String = "Original Audio",
+  val durationSec: Int = 28,
+  val viewsCount: Long = 128400,
+  val likesCount: Long = 128000,
+  val commentsCount: Long = 2400,
+  val sharesCount: Long = 12000,
+  val isLiked: Boolean = false,
+  val isSaved: Boolean = false,
+  val isFollowing: Boolean = false,
+  val privacy: String = "PUBLIC", // PUBLIC, FRIENDS, PRIVATE
+  val createdAt: Long = System.currentTimeMillis()
+)
+
+@Entity(tableName = "reel_comments")
+data class ReelCommentEntity(
+  @PrimaryKey val id: String = UUID.randomUUID().toString(),
+  val reelId: String,
+  val userId: String,
+  val userName: String,
+  val userAvatar: String = "",
+  val content: String,
+  val likesCount: Int = 0,
+  val isLiked: Boolean = false,
+  val timestamp: Long = System.currentTimeMillis()
+)
+
+@Entity(tableName = "stories")
+data class StoryEntity(
+  @PrimaryKey val id: String = UUID.randomUUID().toString(),
+  val userId: String,
+  val userName: String,
+  val userAvatar: String = "",
+  val mediaDrawableName: String = "story_avatar_daisy",
+  val caption: String = "",
+  val isViewed: Boolean = false,
+  val isMine: Boolean = false,
+  val createdAt: Long = System.currentTimeMillis()
+)
+
+data class CpPartnerInfo(
+  val partnerId: String,
+  val partnerName: String,
+  val partnerAvatar: String,
+  val partnerLivoId: Long,
+  val relationshipType: String,
+  val affinityScore: Long,
+  val establishedAt: Long = System.currentTimeMillis()
+)
+
+// ============================================================================
+// 14. Owner Control Panel, Panel Builder, Roles & Official Distribution
+// ============================================================================
+
+enum class PanelType(val displayName: String) {
+  OFFICIAL("Official Panel"),
+  MANAGER("Manager Panel"),
+  SUPER_ADMIN("Super Admin Panel"),
+  BD("BD Panel"),
+  AGENCY("Agency Panel"),
+  HOSTING("Hosting Panel"),
+  COIN_RESELLER("Coin Reseller Panel"),
+  SUPER_COIN_RESELLER("Super Coin Reseller Panel")
+}
+
+enum class ActionPermission {
+  VIEW,
+  CREATE,
+  EDIT,
+  DELETE,
+  APPROVE,
+  REJECT,
+  ASSIGN,
+  EXPORT,
+  MANAGE_PERMISSIONS
+}
+
+@Entity(tableName = "panel_configurations")
+data class PanelConfigEntity(
+  @PrimaryKey val id: String, // e.g. "OFFICIAL", "MANAGER", etc.
+  val panelType: String, // enum name
+  val displayName: String,
+  val isEnabled: Boolean = true,
+  val modulesJson: String, // JSON array of PanelModuleConfig
+  val isPublished: Boolean = true,
+  val version: Int = 1,
+  val lastUpdatedBy: String = "Owner",
+  val lastUpdatedAt: Long = System.currentTimeMillis()
+)
+
+data class PanelModuleConfig(
+  val moduleId: String,
+  val moduleName: String,
+  val isEnabled: Boolean = true,
+  val allowedActions: List<String> = listOf("VIEW"),
+  val accessScope: String = "GLOBAL", // GLOBAL, ASSIGNED_ONLY, SELF_ONLY
+  val maxLimit: Long = 0L // Optional limit (coins, hosts, etc.)
+)
+
+@Entity(tableName = "panel_templates")
+data class PanelTemplateEntity(
+  @PrimaryKey val id: String,
+  val templateName: String,
+  val panelType: String,
+  val description: String,
+  val modulesJson: String,
+  val createdAt: Long = System.currentTimeMillis()
+)
+
+@Entity(tableName = "user_panel_assignments")
+data class UserPanelAssignmentEntity(
+  @PrimaryKey val id: String = UUID.randomUUID().toString(),
+  val userId: String,
+  val userLivoId: Long,
+  val userName: String,
+  val userAvatar: String,
+  val panelType: String, // OFFICIAL, MANAGER, etc.
+  val roleName: String,
+  val durationDays: Int, // -1 for permanent, 1, 7, 15, 30, 90
+  val expiresAt: Long, // -1 for permanent, or timestamp
+  val customPermissionsJson: String = "", // Override or subset of features
+  val coinInventoryLimit: Long = 0L,
+  val notes: String = "",
+  val status: String = "ACTIVE", // ACTIVE, SUSPENDED, EXPIRED, REVOKED
+  val assignedBy: String = "Owner",
+  val assignedAt: Long = System.currentTimeMillis()
+)
+
+@Entity(tableName = "system_currency_settings")
+data class SystemCurrencySettingsEntity(
+  @PrimaryKey val id: String = "global_currency_settings",
+  val referenceRateCoinsPerUsd: Long = 400000L,
+  val diamondExchangeFeePercent: Int = 30,
+  val exchangeOutputCoinsPer100Diamonds: Int = 70,
+  val minExchangeDiamonds: Long = 100L,
+  val maxDailyExchangeDiamonds: Long = 10000000L,
+  val resellerDiscountPercent: Int = 5,
+  val updatedAt: Long = System.currentTimeMillis()
+)
+
+

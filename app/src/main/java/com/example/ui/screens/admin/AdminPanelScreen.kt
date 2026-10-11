@@ -55,7 +55,14 @@ fun AdminPanelScreen(
           .fillMaxWidth()
           .statusBarsPadding()
       ) {
-        LivoTopBar(title = "Admin & Operations Control", onBackClick = onBackClick)
+        LivoTopBar(
+          title = "Admin & Operations Control",
+          onBackClick = onBackClick,
+          actions = {
+            LivoBrandLogo(size = 30.dp, showGlow = false)
+            Spacer(modifier = Modifier.width(12.dp))
+          }
+        )
         TabRow(
           selectedTabIndex = selectedTab,
           containerColor = DarkBackground,
