@@ -39,6 +39,7 @@ fun UserProfileSheet(
   val currentUser by repository.currentUser.collectAsState()
   var isFollowing by remember { mutableStateOf(false) }
   var showReportDialog by remember { mutableStateOf(false) }
+  var showGiftModal by remember { mutableStateOf(false) }
 
   LaunchedEffect(user.id) {
     isFollowing = repository.isFollowing(user.id)
@@ -128,7 +129,7 @@ fun UserProfileSheet(
       // Actions
       if (!isMe) {
         Row(
-          horizontalArrangement = Arrangement.spacedBy(10.dp),
+          horizontalArrangement = Arrangement.spacedBy(8.dp),
           modifier = Modifier.fillMaxWidth()
         ) {
           Button(
@@ -149,8 +150,8 @@ fun UserProfileSheet(
               contentDescription = null,
               modifier = Modifier.size(16.dp)
             )
-            Spacer(modifier = Modifier.width(6.dp))
-            Text(if (isFollowing) "Following" else "Follow")
+            Spacer(modifier = Modifier.width(4.dp))
+            Text(if (isFollowing) "Following" else "Follow", fontSize = 12.sp)
           }
 
           Button(
@@ -163,8 +164,21 @@ fun UserProfileSheet(
             modifier = Modifier.weight(1f)
           ) {
             Icon(Icons.Default.Chat, contentDescription = null, tint = Color.Black, modifier = Modifier.size(16.dp))
-            Spacer(modifier = Modifier.width(6.dp))
-            Text("Message", color = Color.Black, fontWeight = FontWeight.Bold)
+            Spacer(modifier = Modifier.width(4.dp))
+            Text("Message", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+          }
+
+          Button(
+            onClick = {
+              showGiftModal = true
+            },
+            shape = RoundedCornerShape(12.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = LivoRose),
+            modifier = Modifier.weight(1.1f)
+          ) {
+            Text("🎁", fontSize = 14.sp)
+            Spacer(modifier = Modifier.width(4.dp))
+            Text("Send Gift", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
           }
         }
 
@@ -262,6 +276,18 @@ fun UserProfileSheet(
       },
       dismissButton = {
         TextButton(onClick = { showReportDialog = false }) { Text("Cancel", color = TextSecondary) }
+      }
+    )
+  }
+
+  // Virtual Gift Modal for Private Profile
+  if (showGiftModal) {
+    GiftSendingModalSheet(
+      targetUser = user,
+      repository = repository,
+      onDismiss = { showGiftModal = false },
+      onGiftSent = { giftName, count, cost ->
+        Toast.makeText(context, "Successfully sent ${count}x $giftName to ${user.nickname}!", Toast.LENGTH_LONG).show()
       }
     )
   }

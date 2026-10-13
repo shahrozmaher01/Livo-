@@ -931,6 +931,7 @@ fun ChatDetailScreen(
   val messages by repository.observePrivateMessages(peerUserId).collectAsState(initial = emptyList())
   val currentUser by repository.currentUser.collectAsState()
   var textInput by remember { mutableStateOf("") }
+  var showGiftModal by remember { mutableStateOf(false) }
   val timeFormat = remember { SimpleDateFormat("HH:mm", Locale.getDefault()) }
 
   val AccentPurple = Color(0xFFA855F7)
@@ -1044,7 +1045,16 @@ fun ChatDetailScreen(
             modifier = Modifier.weight(1f)
           )
 
-          Spacer(modifier = Modifier.width(8.dp))
+          Spacer(modifier = Modifier.width(6.dp))
+
+          IconButton(
+            onClick = { showGiftModal = true },
+            modifier = Modifier.size(42.dp)
+          ) {
+            Text("🎁", fontSize = 20.sp)
+          }
+
+          Spacer(modifier = Modifier.width(4.dp))
 
           IconButton(
             onClick = {
@@ -1136,5 +1146,19 @@ fun ChatDetailScreen(
         }
       }
     }
+  }
+
+  // Virtual Gift Sheet inside Chat
+  if (showGiftModal && peerUser != null) {
+    GiftSendingModalSheet(
+      targetUser = peerUser!!,
+      repository = repository,
+      onDismiss = { showGiftModal = false },
+      onGiftSent = { name, count, cost ->
+        coroutineScope.launch {
+          repository.sendPrivateMessage(peerUserId, "Sent ${count}x $name (${String.format("%,d", cost)} 🪙)! 🎁")
+        }
+      }
+    )
   }
 }

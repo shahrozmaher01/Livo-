@@ -828,44 +828,114 @@ fun VoiceRoomScreen(
           )
         }
 
-        Spacer(modifier = Modifier.height(14.dp))
+        var giftCategoryTab by remember { mutableStateOf(0) }
+        var selectedLuckyGift by remember { mutableStateOf(repository.luckyGiftCatalog.first()) }
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        TabRow(
+          selectedTabIndex = giftCategoryTab,
+          containerColor = DarkSurfaceCard,
+          contentColor = Color.White
+        ) {
+          Tab(
+            selected = giftCategoryTab == 0,
+            onClick = { giftCategoryTab = 0 },
+            text = { Text("Standard Gifts (${repository.giftCatalog.size})", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+          )
+          Tab(
+            selected = giftCategoryTab == 1,
+            onClick = { giftCategoryTab = 1 },
+            text = { Text("🍀 Lucky Pool (${repository.luckyGiftCatalog.size})", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+          )
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
 
         // Gifts Grid
-        LazyVerticalGrid(
-          columns = GridCells.Fixed(4),
-          horizontalArrangement = Arrangement.spacedBy(8.dp),
-          verticalArrangement = Arrangement.spacedBy(8.dp),
-          modifier = Modifier.height(200.dp)
-        ) {
-          items(repository.giftCatalog) { gift ->
-            val isSelected = selectedGift.id == gift.id
-            Surface(
-              shape = RoundedCornerShape(12.dp),
-              color = if (isSelected) LivoViolet.copy(alpha = 0.3f) else DarkSurfaceCard,
-              border = if (isSelected) androidx.compose.foundation.BorderStroke(1.5.dp, LivoViolet) else null,
-              modifier = Modifier
-                .clickable { selectedGift = gift }
-                .padding(2.dp)
-            ) {
-              Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.padding(8.dp)
+        if (giftCategoryTab == 0) {
+          LazyVerticalGrid(
+            columns = GridCells.Fixed(4),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.height(180.dp)
+          ) {
+            items(repository.giftCatalog) { gift ->
+              val isSelected = selectedGift.id == gift.id
+              Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = if (isSelected) LivoViolet.copy(alpha = 0.3f) else DarkSurfaceCard,
+                border = if (isSelected) androidx.compose.foundation.BorderStroke(1.5.dp, LivoViolet) else null,
+                modifier = Modifier
+                  .clickable { selectedGift = gift }
+                  .padding(2.dp)
               ) {
-                Text(text = gift.iconEmoji, fontSize = 28.sp)
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                  text = gift.name,
-                  color = TextPrimary,
-                  fontSize = 11.sp,
-                  fontWeight = FontWeight.Bold,
-                  maxLines = 1,
-                  overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                  text = "${gift.coinPrice} 🪙",
-                  color = LivoGoldLight,
-                  fontSize = 10.sp
-                )
+                Column(
+                  horizontalAlignment = Alignment.CenterHorizontally,
+                  modifier = Modifier.padding(8.dp)
+                ) {
+                  Text(text = gift.iconEmoji, fontSize = 28.sp)
+                  Spacer(modifier = Modifier.height(4.dp))
+                  Text(
+                    text = gift.name,
+                    color = TextPrimary,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                  )
+                  Text(
+                    text = "${String.format("%,d", gift.coinPrice)} 🪙",
+                    color = LivoGoldLight,
+                    fontSize = 10.sp
+                  )
+                }
+              }
+            }
+          }
+        } else {
+          LazyVerticalGrid(
+            columns = GridCells.Fixed(3),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.height(180.dp)
+          ) {
+            items(repository.luckyGiftCatalog) { lucky ->
+              val isSelected = selectedLuckyGift.id == lucky.id
+              Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = if (isSelected) Color(0xFF10B981).copy(alpha = 0.3f) else DarkSurfaceCard,
+                border = if (isSelected) androidx.compose.foundation.BorderStroke(1.5.dp, Color(0xFF10B981)) else null,
+                modifier = Modifier
+                  .clickable { selectedLuckyGift = lucky }
+                  .padding(2.dp)
+              ) {
+                Column(
+                  horizontalAlignment = Alignment.CenterHorizontally,
+                  modifier = Modifier.padding(8.dp)
+                ) {
+                  Text(text = lucky.iconEmoji, fontSize = 28.sp)
+                  Spacer(modifier = Modifier.height(4.dp))
+                  Text(
+                    text = lucky.name,
+                    color = TextPrimary,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                  )
+                  Text(
+                    text = "${lucky.coinPrice} 🪙",
+                    color = LivoGoldLight,
+                    fontSize = 10.sp
+                  )
+                  Text(
+                    text = "+${lucky.receiverDiamondReward} 💎",
+                    color = Color(0xFF34D399),
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold
+                  )
+                }
               }
             }
           }
@@ -900,7 +970,8 @@ fun VoiceRoomScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        val totalCost = selectedGift.coinPrice * selectedMultiplier
+        val currentItemCost = if (giftCategoryTab == 0) selectedGift.coinPrice else selectedLuckyGift.coinPrice
+        val totalCost = currentItemCost * selectedMultiplier
 
         Row(
           verticalAlignment = Alignment.CenterVertically,
@@ -925,14 +996,23 @@ fun VoiceRoomScreen(
               }
               isSendingGift = true
               coroutineScope.launch {
-                val result = repository.sendGift(
-                  receiverId = recipientId,
-                  giftId = selectedGift.id,
-                  count = selectedMultiplier
-                )
+                val result = if (giftCategoryTab == 0) {
+                  repository.sendGift(
+                    receiverId = recipientId,
+                    giftId = selectedGift.id,
+                    count = selectedMultiplier
+                  )
+                } else {
+                  repository.sendLuckyGift(
+                    receiverId = recipientId,
+                    luckyGiftId = selectedLuckyGift.id,
+                    count = selectedMultiplier
+                  )
+                }
                 isSendingGift = false
                 result.onSuccess {
-                  latestGiftBanner = "${currentUser?.nickname} sent ${selectedMultiplier}x ${selectedGift.name} to $recipientName!"
+                  val sentName = if (giftCategoryTab == 0) selectedGift.name else selectedLuckyGift.name
+                  latestGiftBanner = "${currentUser?.nickname} sent ${selectedMultiplier}x $sentName to $recipientName!"
                   showGiftSheet = false
                   targetUserForGift = null
                 }.onFailure { err ->

@@ -50,8 +50,10 @@ data class UserEntity(
   val isOnline: Boolean = true,
   val isBanned: Boolean = false,
   val banReason: String? = null,
+  val googleSubId: String? = null, // Permanent verified Google Account subject identifier
   val createdAt: Long = System.currentTimeMillis()
 )
+
 
 data class UserSession(
   val userId: String,
@@ -162,9 +164,9 @@ data class PrivateMessageEntity(
 
 // ============================================================================
 // 5. Coins, Wallet & Transactions
-// Business Rule: $1 = 28,000 Coins
+// Business Rule: $1 = 400,000 Coins
 // ============================================================================
-const val COINS_PER_USD = 28000L
+const val COINS_PER_USD = 400000L
 
 @Entity(tableName = "coin_wallets")
 data class CoinWalletEntity(
@@ -184,9 +186,12 @@ data class CoinTransactionEntity(
   val amount: Long, // + for recharge, - for spend
   val balanceBefore: Long,
   val balanceAfter: Long,
-  val type: String, // RECHARGE, GIFT_SEND, REWARD, ADMIN_ADJUST
+  val type: String, // RECHARGE, GIFT_SEND, REWARD, ADMIN_ADJUST, EXCHANGE_CREDIT, WITHDRAW_DEBIT
   val referenceId: String? = null,
   val description: String,
+  val paymentProvider: String? = null,
+  val purchaseAmountUsd: Double? = null,
+  val status: String = "COMPLETED",
   val timestamp: Long = System.currentTimeMillis()
 )
 
@@ -196,6 +201,25 @@ data class RechargePackage(
   val coinAmount: Long,
   val bonusCoins: Long = 0,
   val isPopular: Boolean = false
+)
+
+@Entity(tableName = "recharge_packages")
+data class RechargePackageEntity(
+  @PrimaryKey val id: String,
+  val usdPrice: Double,
+  val coinAmount: Long,
+  val bonusCoins: Long = 0,
+  val isPopular: Boolean = false,
+  val isEnabled: Boolean = true,
+  val sortOrder: Int = 0
+)
+
+data class PaymentProvider(
+  val id: String,
+  val name: String,
+  val iconEmoji: String,
+  val badgeText: String,
+  val description: String
 )
 
 // ============================================================================
@@ -375,10 +399,10 @@ data class ReelEntity(
   val hashtags: String = "#sunset #vibes #lvoice",
   val musicTitle: String = "Original Audio",
   val durationSec: Int = 28,
-  val viewsCount: Long = 128400,
-  val likesCount: Long = 128000,
-  val commentsCount: Long = 2400,
-  val sharesCount: Long = 12000,
+  val viewsCount: Long = 0,
+  val likesCount: Long = 0,
+  val commentsCount: Long = 0,
+  val sharesCount: Long = 0,
   val isLiked: Boolean = false,
   val isSaved: Boolean = false,
   val isFollowing: Boolean = false,
@@ -509,7 +533,92 @@ data class SystemCurrencySettingsEntity(
   val minExchangeDiamonds: Long = 100L,
   val maxDailyExchangeDiamonds: Long = 10000000L,
   val resellerDiscountPercent: Int = 5,
+  val isExchangeEnabled: Boolean = true,
+  val minWithdrawalDiamonds: Long = 500000L, // 500,000 Diamonds = $1.00 minimum
+  val diamondsPerUsdWithdrawal: Long = 500000L,
+  val isWithdrawalEnabled: Boolean = true,
   val updatedAt: Long = System.currentTimeMillis()
 )
+
+@Entity(tableName = "payout_requests")
+data class PayoutRequestEntity(
+  @PrimaryKey val id: String = UUID.randomUUID().toString(),
+  val requestId: String, // e.g. "WD-20261012-XXXX"
+  val userId: String,
+  val userLivoId: Long,
+  val userName: String,
+  val userAvatar: String = "",
+  val diamondsAmount: Long,
+  val payoutUsdAmount: Double,
+  val paymentMethod: String, // "BANK_TRANSFER", "PAYPAL", "USDT_TRC20", "UPI"
+  val accountDetails: String, // Bank info, PayPal email, or USDT address
+  val status: String = "PENDING", // PENDING, APPROVED, REJECTED
+  val adminNote: String? = null,
+  val processedAt: Long? = null,
+  val createdAt: Long = System.currentTimeMillis()
+)
+
+// ============================================================================
+// 15. Diamond & Exchange Transactions Ledger
+// ============================================================================
+@Entity(tableName = "diamond_transactions")
+data class DiamondTransactionEntity(
+  @PrimaryKey val id: String = UUID.randomUUID().toString(),
+  val transactionId: String,
+  val userId: String,
+  val amount: Long, // + for gift received, - for exchange
+  val balanceBefore: Long,
+  val balanceAfter: Long,
+  val type: String, // "GIFT_REWARD", "EXCHANGE_DEBIT", "ADMIN_ADJUST"
+  val referenceId: String? = null,
+  val description: String,
+  val timestamp: Long = System.currentTimeMillis()
+)
+
+@Entity(tableName = "exchange_transactions")
+data class ExchangeTransactionEntity(
+  @PrimaryKey val id: String = UUID.randomUUID().toString(),
+  val transactionId: String, // Idempotency reference
+  val userId: String,
+  val diamondsExchanged: Long,
+  val feePercentage: Int, // e.g. 30
+  val feeDiamondsEquivalent: Long, // 30% retained
+  val coinsCredited: Long, // 70% credited
+  val exchangeRateUsed: Double, // 0.70
+  val status: String = "COMPLETED", // COMPLETED, FAILED, PENDING
+  val timestamp: Long = System.currentTimeMillis()
+)
+
+// ============================================================================
+// 16. Lucky Gift & Promotional Reward Pool
+// ============================================================================
+data class LuckyGiftItem(
+  val id: String,
+  val name: String,
+  val coinPrice: Long, // e.g. 500 Coins
+  val iconEmoji: String,
+  val receiverDiamondReward: Long, // e.g. 100 Diamonds
+  val platformCommissionCoins: Long, // e.g. 100 Coins
+  val promotionalPoolAllocationCoins: Long, // e.g. 300 Coins
+  val senderXpReward: Long, // e.g. 50 XP
+  val charmPoints: Long, // e.g. 500 Charm
+  val wealthPoints: Long, // e.g. 500 Wealth
+  val animationDurationSec: Int = 3,
+  val animationKey: String = "LUCKY_BURST",
+  val isAvailable: Boolean = true
+)
+
+@Entity(tableName = "promotional_reward_pools")
+data class PromotionalRewardPoolEntity(
+  @PrimaryKey val id: String = "global_promo_pool",
+  val totalBudgetCoins: Long = 5000000L,
+  val allocatedCoins: Long = 0L,
+  val remainingCoins: Long = 5000000L,
+  val maxRewardPerUserCoins: Long = 50000L,
+  val bonusXpMultiplier: Double = 1.2,
+  val isActive: Boolean = true,
+  val updatedAt: Long = System.currentTimeMillis()
+)
+
 
 

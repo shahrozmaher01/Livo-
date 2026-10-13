@@ -7,6 +7,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -33,10 +36,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.R
-import com.example.data.model.RoomEntity
-import com.example.data.model.UserEntity
-import com.example.data.model.UserRole
+import com.example.data.model.*
+import com.example.data.repository.LivoRepository
 import com.example.ui.theme.*
+import kotlinx.coroutines.launch
 
 @Composable
 fun LivoBrandLogo(
@@ -588,4 +591,316 @@ fun RoomCard(
     }
   }
 }
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun GiftSendingModalSheet(
+  targetUser: UserEntity,
+  repository: LivoRepository,
+  onDismiss: () -> Unit,
+  onGiftSent: ((giftName: String, count: Int, totalCoins: Long) -> Unit)? = null
+) {
+  val coroutineScope = rememberCoroutineScope()
+  val currentUser by repository.currentUser.collectAsState()
+  val wallet by repository.observeWallet(currentUser?.id ?: "").collectAsState(initial = null)
+
+  var selectedTab by remember { mutableStateOf(0) } // 0: Standard, 1: Lucky Gifts
+  var selectedGiftId by remember { mutableStateOf(repository.giftCatalog.first().id) }
+  var selectedLuckyGiftId by remember { mutableStateOf(repository.luckyGiftCatalog.first().id) }
+  var selectedMultiplier by remember { mutableStateOf(1) }
+  var isSending by remember { mutableStateOf(false) }
+  var celebrationBanner by remember { mutableStateOf<String?>(null) }
+
+  val standardGift = repository.giftCatalog.find { it.id == selectedGiftId } ?: repository.giftCatalog.first()
+  val luckyGift = repository.luckyGiftCatalog.find { it.id == selectedLuckyGiftId } ?: repository.luckyGiftCatalog.first()
+
+  val totalCost = if (selectedTab == 0) standardGift.coinPrice * selectedMultiplier
+  else luckyGift.coinPrice * selectedMultiplier
+
+  val userBalance = wallet?.balance ?: 0L
+
+  ModalBottomSheet(
+    onDismissRequest = onDismiss,
+    containerColor = Color(0xFF0D1326),
+    dragHandle = { BottomSheetDefaults.DragHandle(color = Color(0xFF334155)) }
+  ) {
+    Column(
+      modifier = Modifier
+        .fillMaxWidth()
+        .padding(horizontal = 16.dp)
+        .padding(bottom = 28.dp)
+    ) {
+      // Recipient Header
+      Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+        modifier = Modifier.fillMaxWidth()
+      ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+          AvatarWithFrame(
+            avatarUrl = targetUser.avatarUrl,
+            frameId = targetUser.equippedFrameId,
+            size = 46.dp
+          )
+          Spacer(modifier = Modifier.width(10.dp))
+          Column {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+              Text(
+                text = "Send Gift to ${targetUser.nickname}",
+                color = Color.White,
+                fontWeight = FontWeight.Bold,
+                fontSize = 14.sp
+              )
+              Spacer(modifier = Modifier.width(6.dp))
+              LevelBadge(level = targetUser.level)
+            }
+            Text(
+              text = "ID: ${targetUser.livoId} • Recipient earns Diamonds 💎",
+              color = Color(0xFF67E8F9),
+              fontSize = 11.sp
+            )
+          }
+        }
+
+        // Sender Balance Pill
+        Surface(
+          shape = RoundedCornerShape(12.dp),
+          color = Color(0xFF1E2845),
+          border = BorderStroke(0.8.dp, LivoGold.copy(alpha = 0.5f))
+        ) {
+          Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+          ) {
+            Text("🪙", fontSize = 12.sp)
+            Spacer(modifier = Modifier.width(4.dp))
+            Text(
+              text = String.format("%,d", userBalance),
+              color = LivoGoldLight,
+              fontSize = 12.sp,
+              fontWeight = FontWeight.Bold
+            )
+          }
+        }
+      }
+
+      Spacer(modifier = Modifier.height(14.dp))
+
+      // Gift Tabs (Standard vs Lucky)
+      TabRow(
+        selectedTabIndex = selectedTab,
+        containerColor = Color(0xFF0B1020),
+        contentColor = Color.White
+      ) {
+        Tab(
+          selected = selectedTab == 0,
+          onClick = { selectedTab = 0 },
+          text = { Text("Standard Gifts (${repository.giftCatalog.size})", fontWeight = FontWeight.Bold, fontSize = 12.sp) }
+        )
+        Tab(
+          selected = selectedTab == 1,
+          onClick = { selectedTab = 1 },
+          text = { Text("🍀 Lucky Rewards (${repository.luckyGiftCatalog.size})", fontWeight = FontWeight.Bold, fontSize = 12.sp) }
+        )
+      }
+
+      Spacer(modifier = Modifier.height(12.dp))
+
+      // Gift Grid / List
+      if (selectedTab == 0) {
+        androidx.compose.foundation.lazy.LazyRow(
+          horizontalArrangement = Arrangement.spacedBy(8.dp),
+          modifier = Modifier.fillMaxWidth()
+        ) {
+          items(repository.giftCatalog) { gift ->
+            val isSelected = selectedGiftId == gift.id
+            Surface(
+              shape = RoundedCornerShape(12.dp),
+              color = if (isSelected) LivoViolet.copy(alpha = 0.35f) else Color(0xFF16203B),
+              border = BorderStroke(1.2.dp, if (isSelected) LivoViolet else Color(0xFF233054)),
+              modifier = Modifier
+                .width(82.dp)
+                .clickable { selectedGiftId = gift.id }
+            ) {
+              Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.padding(vertical = 10.dp, horizontal = 4.dp)
+              ) {
+                Text(gift.iconEmoji, fontSize = 28.sp)
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                  text = gift.name,
+                  color = Color.White,
+                  fontSize = 11.sp,
+                  fontWeight = FontWeight.SemiBold,
+                  maxLines = 1,
+                  overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                  text = "${String.format("%,d", gift.coinPrice)} 🪙",
+                  color = LivoGoldLight,
+                  fontSize = 10.sp,
+                  fontWeight = FontWeight.Bold
+                )
+              }
+            }
+          }
+        }
+      } else {
+        androidx.compose.foundation.lazy.LazyRow(
+          horizontalArrangement = Arrangement.spacedBy(8.dp),
+          modifier = Modifier.fillMaxWidth()
+        ) {
+          items(repository.luckyGiftCatalog) { lucky ->
+            val isSelected = selectedLuckyGiftId == lucky.id
+            Surface(
+              shape = RoundedCornerShape(12.dp),
+              color = if (isSelected) Color(0xFF10B981).copy(alpha = 0.3f) else Color(0xFF16203B),
+              border = BorderStroke(1.2.dp, if (isSelected) Color(0xFF10B981) else Color(0xFF233054)),
+              modifier = Modifier
+                .width(110.dp)
+                .clickable { selectedLuckyGiftId = lucky.id }
+            ) {
+              Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.padding(10.dp)
+              ) {
+                Text(lucky.iconEmoji, fontSize = 28.sp)
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                  text = lucky.name,
+                  color = Color.White,
+                  fontSize = 12.sp,
+                  fontWeight = FontWeight.Bold
+                )
+                Text(
+                  text = "${lucky.coinPrice} 🪙",
+                  color = LivoGoldLight,
+                  fontSize = 11.sp,
+                  fontWeight = FontWeight.Bold
+                )
+                Surface(
+                  shape = RoundedCornerShape(4.dp),
+                  color = Color(0xFF10B981).copy(alpha = 0.2f),
+                  modifier = Modifier.padding(top = 4.dp)
+                ) {
+                  Text(
+                    text = "+${lucky.receiverDiamondReward} 💎",
+                    color = Color(0xFF34D399),
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                  )
+                }
+              }
+            }
+          }
+        }
+      }
+
+      Spacer(modifier = Modifier.height(14.dp))
+
+      // Quantity Multiplier (1x, 10x, 66x, 99x, 520x)
+      Row(
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        modifier = Modifier.fillMaxWidth()
+      ) {
+        listOf(1, 10, 66, 99, 520).forEach { count ->
+          val isSelected = selectedMultiplier == count
+          Surface(
+            shape = RoundedCornerShape(8.dp),
+            color = if (isSelected) LivoRose else Color(0xFF16203B),
+            border = BorderStroke(0.8.dp, if (isSelected) LivoRose else Color(0xFF233054)),
+            modifier = Modifier
+              .weight(1f)
+              .clickable { selectedMultiplier = count }
+          ) {
+            Text(
+              text = "${count}x",
+              color = Color.White,
+              fontSize = 12.sp,
+              fontWeight = FontWeight.Bold,
+              textAlign = TextAlign.Center,
+              modifier = Modifier.padding(vertical = 8.dp)
+            )
+          }
+        }
+      }
+
+      Spacer(modifier = Modifier.height(16.dp))
+
+      // Total & Send Button
+      Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+        modifier = Modifier.fillMaxWidth()
+      ) {
+        Column {
+          Text("Total Cost", color = TextTertiary, fontSize = 11.sp)
+          Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("🪙", fontSize = 16.sp)
+            Spacer(modifier = Modifier.width(4.dp))
+            Text(
+              text = String.format("%,d", totalCost),
+              color = LivoGold,
+              fontSize = 18.sp,
+              fontWeight = FontWeight.ExtraBold
+            )
+          }
+        }
+
+        Button(
+          onClick = {
+            if (userBalance < totalCost) return@Button
+            isSending = true
+            coroutineScope.launch {
+              if (selectedTab == 0) {
+                val res = repository.sendGift(
+                  receiverId = targetUser.id,
+                  giftId = standardGift.id,
+                  count = selectedMultiplier
+                )
+                isSending = false
+                res.onSuccess {
+                  celebrationBanner = "Sent ${selectedMultiplier}x ${standardGift.name} to ${targetUser.nickname}!"
+                  onGiftSent?.invoke(standardGift.name, selectedMultiplier, totalCost)
+                  onDismiss()
+                }
+              } else {
+                val res = repository.sendLuckyGift(
+                  receiverId = targetUser.id,
+                  luckyGiftId = luckyGift.id,
+                  count = selectedMultiplier
+                )
+                isSending = false
+                res.onSuccess {
+                  celebrationBanner = "Sent ${selectedMultiplier}x Lucky ${luckyGift.name} to ${targetUser.nickname}!"
+                  onGiftSent?.invoke(luckyGift.name, selectedMultiplier, totalCost)
+                  onDismiss()
+                }
+              }
+            }
+          },
+          enabled = !isSending && userBalance >= totalCost,
+          shape = RoundedCornerShape(12.dp),
+          colors = ButtonDefaults.buttonColors(
+            containerColor = if (userBalance < totalCost) Color(0xFF334155) else LivoRose
+          ),
+          modifier = Modifier.height(46.dp)
+        ) {
+          if (isSending) {
+            CircularProgressIndicator(color = Color.White, modifier = Modifier.size(18.dp))
+          } else {
+            Text(
+              text = if (userBalance < totalCost) "Insufficient Coins" else "Send Gift 🎁",
+              fontWeight = FontWeight.Bold,
+              fontSize = 14.sp
+            )
+          }
+        }
+      }
+    }
+  }
+}
+
 

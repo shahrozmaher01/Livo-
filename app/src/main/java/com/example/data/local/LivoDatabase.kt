@@ -40,12 +40,18 @@ class Converters {
     PanelConfigEntity::class,
     PanelTemplateEntity::class,
     UserPanelAssignmentEntity::class,
-    SystemCurrencySettingsEntity::class
+    SystemCurrencySettingsEntity::class,
+    DiamondTransactionEntity::class,
+    ExchangeTransactionEntity::class,
+    PromotionalRewardPoolEntity::class,
+    PayoutRequestEntity::class,
+    RechargePackageEntity::class
   ],
-  version = 2,
+  version = 4,
   exportSchema = false
 )
 @TypeConverters(Converters::class)
+
 abstract class LivoDatabase : RoomDatabase() {
   abstract fun userDao(): UserDao
   abstract fun roomDao(): RoomDao

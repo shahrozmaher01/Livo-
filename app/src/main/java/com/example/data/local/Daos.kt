@@ -18,6 +18,9 @@ interface UserDao {
   @Query("SELECT * FROM users WHERE email = :email LIMIT 1")
   suspend fun getUserByEmail(email: String): UserEntity?
 
+  @Query("SELECT * FROM users WHERE googleSubId = :subId LIMIT 1")
+  suspend fun getUserByGoogleSubId(subId: String): UserEntity?
+
   @Query("SELECT * FROM users WHERE livoId = :livoId OR nickname LIKE '%' || :query || '%' LIMIT 30")
   suspend fun searchUsers(livoId: Long, query: String): List<UserEntity>
 
@@ -151,7 +154,60 @@ interface WalletDao {
 
   @Query("SELECT * FROM gift_transactions WHERE senderId = :userId OR receiverId = :userId ORDER BY timestamp DESC LIMIT 50")
   fun observeGiftTransactions(userId: String): Flow<List<GiftTransactionEntity>>
+
+  // Diamond Ledger Transactions
+  @Insert(onConflict = OnConflictStrategy.REPLACE)
+  suspend fun insertDiamondTransaction(tx: DiamondTransactionEntity)
+
+  @Query("SELECT * FROM diamond_transactions WHERE userId = :userId ORDER BY timestamp DESC LIMIT 100")
+  fun observeDiamondTransactions(userId: String): Flow<List<DiamondTransactionEntity>>
+
+  @Query("SELECT * FROM coin_transactions WHERE transactionId = :txId LIMIT 1")
+  suspend fun getTransactionById(txId: String): CoinTransactionEntity?
+
+  // Exchange Transactions
+  @Insert(onConflict = OnConflictStrategy.REPLACE)
+  suspend fun insertExchangeTransaction(tx: ExchangeTransactionEntity)
+
+  @Query("SELECT * FROM exchange_transactions WHERE userId = :userId ORDER BY timestamp DESC LIMIT 100")
+  fun observeExchangeTransactions(userId: String): Flow<List<ExchangeTransactionEntity>>
+
+  @Query("SELECT * FROM exchange_transactions ORDER BY timestamp DESC LIMIT 200")
+  fun observeAllExchangeTransactions(): Flow<List<ExchangeTransactionEntity>>
+
+  @Query("SELECT * FROM exchange_transactions WHERE transactionId = :txId LIMIT 1")
+  suspend fun getExchangeTransactionById(txId: String): ExchangeTransactionEntity?
+
+  // Payout Requests (Diamond Withdrawals)
+  @Insert(onConflict = OnConflictStrategy.REPLACE)
+  suspend fun insertPayoutRequest(request: PayoutRequestEntity)
+
+  @Update
+  suspend fun updatePayoutRequest(request: PayoutRequestEntity)
+
+  @Query("SELECT * FROM payout_requests WHERE userId = :userId ORDER BY createdAt DESC LIMIT 100")
+  fun observePayoutRequests(userId: String): Flow<List<PayoutRequestEntity>>
+
+  @Query("SELECT * FROM payout_requests ORDER BY createdAt DESC LIMIT 200")
+  fun observeAllPayoutRequests(): Flow<List<PayoutRequestEntity>>
+
+  @Query("SELECT * FROM payout_requests WHERE id = :id LIMIT 1")
+  suspend fun getPayoutRequestById(id: String): PayoutRequestEntity?
+
+  // Recharge Packages
+  @Insert(onConflict = OnConflictStrategy.REPLACE)
+  suspend fun insertRechargePackages(packages: List<RechargePackageEntity>)
+
+  @Insert(onConflict = OnConflictStrategy.REPLACE)
+  suspend fun insertRechargePackage(pkg: RechargePackageEntity)
+
+  @Query("SELECT * FROM recharge_packages WHERE isEnabled = 1 ORDER BY sortOrder ASC, usdPrice ASC")
+  fun observeRechargePackages(): Flow<List<RechargePackageEntity>>
+
+  @Query("DELETE FROM recharge_packages WHERE id = :id")
+  suspend fun deleteRechargePackage(id: String)
 }
+
 
 @Dao
 interface SocialDao {

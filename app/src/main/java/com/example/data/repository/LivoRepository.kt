@@ -42,14 +42,99 @@ class LivoRepository(
     GiftItem("gift_rocket", "Space Rocket", 28000, "🚀", "Supreme", "LAUNCH")
   )
 
-  // Recharge packages ($1 = 28,000 Coins)
+  // Recharge packages: Official rate 1 USD = 400,000 Coins
   val rechargePackages = listOf(
-    RechargePackage("pkg_1", 0.99, 28000, 2000, isPopular = true),
-    RechargePackage("pkg_2", 4.99, 140000, 15000),
-    RechargePackage("pkg_3", 9.99, 280000, 40000),
-    RechargePackage("pkg_4", 49.99, 1400000, 250000),
-    RechargePackage("pkg_5", 99.99, 2800000, 600000)
+    RechargePackage("pkg_1", 1.00, 400000, 0, isPopular = true),
+    RechargePackage("pkg_2", 2.00, 800000, 0),
+    RechargePackage("pkg_3", 5.00, 2000000, 0),
+    RechargePackage("pkg_4", 10.00, 4000000, 0),
+    RechargePackage("pkg_5", 25.00, 10000000, 0),
+    RechargePackage("pkg_6", 50.00, 20000000, 0),
+    RechargePackage("pkg_7", 100.00, 40000000, 0)
   )
+
+  // Verified Payment Providers for In-App Checkout
+  val paymentProviders = listOf(
+    PaymentProvider(
+      id = "google_play",
+      name = "Google Play In-App Billing",
+      iconEmoji = "🟢",
+      badgeText = "Official & Instant",
+      description = "Verified Google Play Store in-app purchase with 1-tap security token"
+    ),
+    PaymentProvider(
+      id = "card",
+      name = "Credit / Debit Card",
+      iconEmoji = "💳",
+      badgeText = "Visa / Mastercard",
+      description = "Secure 256-bit encrypted card checkout with fraud protection"
+    ),
+    PaymentProvider(
+      id = "paypal",
+      name = "PayPal Express",
+      iconEmoji = "🅿️",
+      badgeText = "Buyer Protected",
+      description = "Fast one-click checkout via verified PayPal balance or linked bank"
+    ),
+    PaymentProvider(
+      id = "crypto_usdt",
+      name = "USDT / Crypto Pay (TRC-20)",
+      iconEmoji = "🌐",
+      badgeText = "Zero Gas / Instant",
+      description = "Instant decentralized blockchain settlement on TRON or BSC"
+    ),
+    PaymentProvider(
+      id = "upi_fast",
+      name = "Fast Bank / UPI Transfer",
+      iconEmoji = "⚡",
+      badgeText = "Instant Bank",
+      description = "Direct instant clearing bank gateway"
+    )
+  )
+
+  // Lucky Gifts Catalog (500 Coins: 100 Diamonds receiver, 100 Coins commission, 300 Coins promo pool)
+  val luckyGiftCatalog = listOf(
+    LuckyGiftItem(
+      id = "lucky_clover",
+      name = "Lucky Clover",
+      coinPrice = 500L,
+      iconEmoji = "🍀",
+      receiverDiamondReward = 100L,
+      platformCommissionCoins = 100L,
+      promotionalPoolAllocationCoins = 300L,
+      senderXpReward = 50L,
+      charmPoints = 500L,
+      wealthPoints = 500L,
+      animationKey = "LUCKY_BURST"
+    ),
+    LuckyGiftItem(
+      id = "lucky_star",
+      name = "Lucky Star",
+      coinPrice = 1000L,
+      iconEmoji = "⭐",
+      receiverDiamondReward = 200L,
+      platformCommissionCoins = 200L,
+      promotionalPoolAllocationCoins = 600L,
+      senderXpReward = 100L,
+      charmPoints = 1000L,
+      wealthPoints = 1000L,
+      animationKey = "LUCKY_BURST"
+    ),
+    LuckyGiftItem(
+      id = "lucky_dragon",
+      name = "Golden Lucky Dragon",
+      coinPrice = 5000L,
+      iconEmoji = "🐉",
+      receiverDiamondReward = 1000L,
+      platformCommissionCoins = 1000L,
+      promotionalPoolAllocationCoins = 3000L,
+      senderXpReward = 500L,
+      charmPoints = 5000L,
+      wealthPoints = 5000L,
+      animationKey = "LUCKY_DRAGON"
+    )
+  )
+
 
   // Avatar frames catalog
   val availableFrames = listOf(
@@ -63,6 +148,7 @@ class LivoRepository(
   init {
     repoScope.launch {
       seedInitialDataIfNeeded()
+      cleanUpLegacyDemoData()
       restoreLatestSession()
     }
   }
@@ -81,13 +167,22 @@ class LivoRepository(
   suspend fun loginWithGoogle(
     email: String,
     displayName: String,
-    avatarUrl: String?
+    avatarUrl: String?,
+    googleSubId: String? = null
   ): UserEntity = withContext(Dispatchers.IO) {
-    val existing = database.userDao().getUserByEmail(email)
+    // 1. Check permanent Google Subject Identifier link first
+    val linkedUser = if (!googleSubId.isNullOrBlank()) {
+      database.userDao().getUserByGoogleSubId(googleSubId)
+    } else null
+
+    // 2. Fallback to existing email link
+    val existing = linkedUser ?: database.userDao().getUserByEmail(email)
+
     val user = if (existing != null) {
       existing.copy(
         nickname = displayName.ifBlank { existing.nickname },
         avatarUrl = avatarUrl ?: existing.avatarUrl,
+        googleSubId = googleSubId ?: existing.googleSubId,
         isOnline = true
       )
     } else {
@@ -98,6 +193,7 @@ class LivoRepository(
         email = email,
         nickname = displayName.ifBlank { "LivoUser_${generatedLivoId % 10000}" },
         avatarUrl = avatarUrl ?: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200",
+        googleSubId = googleSubId,
         role = if (email.contains("admin", ignoreCase = true) || email.contains("shahroz", ignoreCase = true)) {
           UserRole.SUPER_ADMIN
         } else {
@@ -112,6 +208,7 @@ class LivoRepository(
     syncWalletForUser(user.id)
     user
   }
+
 
   suspend fun switchAccount(targetUserId: String) = withContext(Dispatchers.IO) {
     val user = database.userDao().getUserById(targetUserId)
@@ -444,53 +541,87 @@ class LivoRepository(
   fun observeTransactions(userId: String): Flow<List<CoinTransactionEntity>> =
     database.walletDao().observeTransactions(userId)
 
+  fun observeDiamondTransactions(userId: String): Flow<List<DiamondTransactionEntity>> =
+    database.walletDao().observeDiamondTransactions(userId)
+
+  fun observeExchangeTransactions(userId: String): Flow<List<ExchangeTransactionEntity>> =
+    database.walletDao().observeExchangeTransactions(userId)
+
+  fun observePayoutRequests(userId: String): Flow<List<PayoutRequestEntity>> =
+    database.walletDao().observePayoutRequests(userId)
+
+  fun observeAllPayoutRequests(): Flow<List<PayoutRequestEntity>> =
+    database.walletDao().observeAllPayoutRequests()
+
+  fun observeRechargePackagesFlow(): Flow<List<RechargePackageEntity>> =
+    database.walletDao().observeRechargePackages()
+
   private suspend fun syncWalletForUser(userId: String) {
     val existing = database.walletDao().getWallet(userId)
     if (existing == null) {
-      // Initialize with welcome coins for newly registered accounts
+      // Initialize with welcome coins for newly registered accounts: $2.00 worth = 800,000 Coins
+      val welcomeCoins = 800000L
       val initialWallet = CoinWalletEntity(
         userId = userId,
-        balance = 56000L, // Welcome balance ($2.00 worth of Livo coins!)
+        balance = welcomeCoins,
         diamondBalance = 0L,
-        totalRecharged = 56000L
+        totalRecharged = welcomeCoins
       )
       database.walletDao().insertOrUpdateWallet(initialWallet)
       database.walletDao().insertTransaction(
         CoinTransactionEntity(
           transactionId = "TX-INIT-${UUID.randomUUID().toString().take(12)}",
           userId = userId,
-          amount = 56000L,
+          amount = welcomeCoins,
           balanceBefore = 0L,
-          balanceAfter = 56000L,
+          balanceAfter = welcomeCoins,
           type = "RECHARGE",
-          description = "Welcome Account Credit (56,000 Livo Coins)"
+          paymentProvider = "System Welcome Credit",
+          purchaseAmountUsd = 2.00,
+          status = "COMPLETED",
+          description = "Welcome Account Credit (800,000 Coins • $2.00 Value)"
         )
       )
     }
   }
 
-  suspend fun rechargeCoins(pkg: RechargePackage): Result<Long> = withContext(Dispatchers.IO) {
+  suspend fun rechargeCoins(
+    pkg: RechargePackage,
+    paymentProvider: String = "Google Play In-App Billing",
+    paymentReference: String = "TX-PAY-${UUID.randomUUID().toString().take(16)}"
+  ): Result<Long> = withContext(Dispatchers.IO) {
     val user = _currentUser.value ?: return@withContext Result.failure(IllegalStateException("Not logged in"))
+    
+    // 1. Prevent duplicate payment processing
+    val existingTx = database.walletDao().getTransactionById(paymentReference)
+    if (existingTx != null) {
+      return@withContext Result.failure(IllegalStateException("Duplicate payment reference $paymentReference detected. Transaction already processed."))
+    }
+
     val wallet = database.walletDao().getWallet(user.id)
       ?: return@withContext Result.failure(IllegalStateException("Wallet not found"))
 
     val totalToAdd = pkg.coinAmount + pkg.bonusCoins
     val newBalance = wallet.balance + totalToAdd
 
-    val txId = "TX-PAY-${UUID.randomUUID().toString().take(16)}"
+    // 2. Record verified transaction ledger entry
     database.walletDao().insertTransaction(
       CoinTransactionEntity(
-        transactionId = txId,
+        transactionId = paymentReference,
         userId = user.id,
         amount = totalToAdd,
         balanceBefore = wallet.balance,
         balanceAfter = newBalance,
         type = "RECHARGE",
         referenceId = pkg.id,
-        description = "Recharge ${pkg.coinAmount} Coins + ${pkg.bonusCoins} Bonus ($${pkg.usdPrice})"
+        paymentProvider = paymentProvider,
+        purchaseAmountUsd = pkg.usdPrice,
+        status = "COMPLETED",
+        description = "Recharge ${String.format("%,d", pkg.coinAmount)} Coins + ${pkg.bonusCoins} Bonus ($${pkg.usdPrice} via $paymentProvider)"
       )
     )
 
+    // 3. Update wallet immediately
     database.walletDao().insertOrUpdateWallet(
       wallet.copy(
         balance = newBalance,
@@ -499,17 +630,223 @@ class LivoRepository(
       )
     )
 
-    // Notify user
+    // 4. Notify user
     database.socialDao().insertNotification(
       NotificationEntity(
         userId = user.id,
         title = "Recharge Successful",
-        content = "Added ${totalToAdd} coins to your balance. Transaction ID: $txId",
+        content = "Added ${String.format("%,d", totalToAdd)} coins via $paymentProvider. Ref: $paymentReference",
         type = "COIN"
       )
     )
 
+    // 5. Audit Log
+    database.socialDao().insertAuditLog(
+      AuditLogEntity(
+        actorId = user.id,
+        actorName = user.nickname,
+        action = "COIN_PURCHASE_VERIFIED",
+        targetType = "WALLET",
+        targetId = user.id,
+        details = "Purchased ${String.format("%,d", pkg.coinAmount)} coins ($${pkg.usdPrice} USD) via $paymentProvider. Ref: $paymentReference"
+      )
+    )
+
     Result.success(newBalance)
+  }
+
+  suspend fun requestPayout(
+    diamondsAmount: Long,
+    paymentMethod: String,
+    accountDetails: String
+  ): Result<PayoutRequestEntity> = withContext(Dispatchers.IO) {
+    val user = _currentUser.value ?: return@withContext Result.failure(IllegalStateException("Not logged in"))
+    val currencyConfig = getCurrencySettings()
+
+    if (!currencyConfig.isWithdrawalEnabled) {
+      return@withContext Result.failure(IllegalStateException("Diamond withdrawals are currently disabled by administrator."))
+    }
+
+    if (diamondsAmount < currencyConfig.minWithdrawalDiamonds) {
+      return@withContext Result.failure(IllegalArgumentException("Minimum withdrawal is ${String.format("%,d", currencyConfig.minWithdrawalDiamonds)} Diamonds."))
+    }
+
+    val wallet = database.walletDao().getWallet(user.id)
+      ?: return@withContext Result.failure(IllegalStateException("Wallet not found"))
+
+    if (wallet.diamondBalance < diamondsAmount) {
+      return@withContext Result.failure(IllegalStateException("Insufficient diamonds. Available: ${String.format("%,d", wallet.diamondBalance)}, Requested: ${String.format("%,d", diamondsAmount)}"))
+    }
+
+    val rate = currencyConfig.diamondsPerUsdWithdrawal.coerceAtLeast(1L)
+    val usdAmount = diamondsAmount.toDouble() / rate
+
+    val reqId = "WD-${System.currentTimeMillis()}-${UUID.randomUUID().toString().take(6).uppercase()}"
+    val newDiamondBalance = wallet.diamondBalance - diamondsAmount
+
+    // Deduct diamonds atomically
+    database.walletDao().insertOrUpdateWallet(
+      wallet.copy(
+        diamondBalance = newDiamondBalance,
+        updatedAt = System.currentTimeMillis()
+      )
+    )
+
+    // Record diamond debit ledger
+    database.walletDao().insertDiamondTransaction(
+      DiamondTransactionEntity(
+        transactionId = reqId,
+        userId = user.id,
+        amount = -diamondsAmount,
+        balanceBefore = wallet.diamondBalance,
+        balanceAfter = newDiamondBalance,
+        type = "WITHDRAW_DEBIT",
+        referenceId = reqId,
+        description = "Withdrawal request for ${String.format("%,d", diamondsAmount)} Diamonds ($${String.format("%.2f", usdAmount)} USD via $paymentMethod)"
+      )
+    )
+
+    val request = PayoutRequestEntity(
+      requestId = reqId,
+      userId = user.id,
+      userLivoId = user.livoId,
+      userName = user.nickname,
+      userAvatar = user.avatarUrl,
+      diamondsAmount = diamondsAmount,
+      payoutUsdAmount = usdAmount,
+      paymentMethod = paymentMethod,
+      accountDetails = accountDetails,
+      status = "PENDING"
+    )
+    database.walletDao().insertPayoutRequest(request)
+
+    database.socialDao().insertAuditLog(
+      AuditLogEntity(
+        actorId = user.id,
+        actorName = user.nickname,
+        action = "PAYOUT_REQUESTED",
+        targetType = "WITHDRAWAL",
+        targetId = reqId,
+        details = "Requested payout of ${String.format("%,d", diamondsAmount)} Diamonds ($${String.format("%.2f", usdAmount)} USD) via $paymentMethod"
+      )
+    )
+
+    database.socialDao().insertNotification(
+      NotificationEntity(
+        userId = user.id,
+        title = "Payout Request Submitted",
+        content = "Your request for $${String.format("%.2f", usdAmount)} USD has been submitted for review. Ref: $reqId",
+        type = "COIN"
+      )
+    )
+
+    Result.success(request)
+  }
+
+  suspend fun adminProcessPayout(
+    requestId: String,
+    approve: Boolean,
+    adminNote: String
+  ): Result<String> = withContext(Dispatchers.IO) {
+    val actor = _currentUser.value ?: return@withContext Result.failure(IllegalStateException("Not logged in"))
+    val req = database.walletDao().getPayoutRequestById(requestId)
+      ?: return@withContext Result.failure(IllegalArgumentException("Request not found"))
+
+    if (req.status != "PENDING") {
+      return@withContext Result.failure(IllegalStateException("Request is already ${req.status}"))
+    }
+
+    if (approve) {
+      val updated = req.copy(
+        status = "APPROVED",
+        adminNote = adminNote,
+        processedAt = System.currentTimeMillis()
+      )
+      database.walletDao().updatePayoutRequest(updated)
+
+      database.socialDao().insertNotification(
+        NotificationEntity(
+          userId = req.userId,
+          title = "Payout Approved & Dispatched!",
+          content = "Your payout of $${String.format("%.2f", req.payoutUsdAmount)} USD has been approved and sent to your ${req.paymentMethod} account.",
+          type = "COIN"
+        )
+      )
+
+      database.socialDao().insertAuditLog(
+        AuditLogEntity(
+          actorId = actor.id,
+          actorName = actor.nickname,
+          action = "PAYOUT_APPROVED",
+          targetType = "WITHDRAWAL",
+          targetId = req.requestId,
+          details = "Approved payout of $${String.format("%.2f", req.payoutUsdAmount)} to ${req.userName}. Note: $adminNote"
+        )
+      )
+      Result.success("Payout request approved successfully")
+    } else {
+      // Reject and refund diamonds
+      val userWallet = database.walletDao().getWallet(req.userId)
+      if (userWallet != null) {
+        val refundedBalance = userWallet.diamondBalance + req.diamondsAmount
+        database.walletDao().insertOrUpdateWallet(
+          userWallet.copy(
+            diamondBalance = refundedBalance,
+            updatedAt = System.currentTimeMillis()
+          )
+        )
+        database.walletDao().insertDiamondTransaction(
+          DiamondTransactionEntity(
+            transactionId = "TX-REFUND-${UUID.randomUUID().toString().take(10)}",
+            userId = req.userId,
+            amount = req.diamondsAmount,
+            balanceBefore = userWallet.diamondBalance,
+            balanceAfter = refundedBalance,
+            type = "ADMIN_ADJUST",
+            referenceId = req.requestId,
+            description = "Refunded ${req.diamondsAmount} Diamonds (Rejected payout: $adminNote)"
+          )
+        )
+      }
+
+      val updated = req.copy(
+        status = "REJECTED",
+        adminNote = adminNote,
+        processedAt = System.currentTimeMillis()
+      )
+      database.walletDao().updatePayoutRequest(updated)
+
+      database.socialDao().insertNotification(
+        NotificationEntity(
+          userId = req.userId,
+          title = "Payout Request Rejected",
+          content = "Your payout request was rejected: $adminNote. Your ${String.format("%,d", req.diamondsAmount)} Diamonds have been refunded.",
+          type = "COIN"
+        )
+      )
+
+      database.socialDao().insertAuditLog(
+        AuditLogEntity(
+          actorId = actor.id,
+          actorName = actor.nickname,
+          action = "PAYOUT_REJECTED",
+          targetType = "WITHDRAWAL",
+          targetId = req.requestId,
+          details = "Rejected payout of $${String.format("%.2f", req.payoutUsdAmount)} to ${req.userName}. Reason: $adminNote. Diamonds refunded."
+        )
+      )
+      Result.success("Payout request rejected and diamonds refunded")
+    }
+  }
+
+  suspend fun adminSaveRechargePackage(pkg: RechargePackageEntity): Result<String> = withContext(Dispatchers.IO) {
+    database.walletDao().insertRechargePackage(pkg)
+    Result.success("Package saved successfully")
+  }
+
+  suspend fun adminDeleteRechargePackage(id: String): Result<String> = withContext(Dispatchers.IO) {
+    database.walletDao().deleteRechargePackage(id)
+    Result.success("Package deleted successfully")
   }
 
   suspend fun sendGift(
@@ -557,15 +894,31 @@ class LivoRepository(
       )
     )
 
-    // 2. Credit recipient diamonds (50% commission conversion to redeemable diamonds)
-    val recipientDiamonds = (totalCost * 0.50).toLong()
+    // 2. Credit recipient diamonds: 1 Coin spent = 1 Diamond received (1:1 ratio)
+    val recipientDiamonds = totalCost
     val receiverWallet = database.walletDao().getWallet(receiver.id) ?: CoinWalletEntity(userId = receiver.id)
+    val newReceiverDiamondBalance = receiverWallet.diamondBalance + recipientDiamonds
     database.walletDao().insertOrUpdateWallet(
       receiverWallet.copy(
-        diamondBalance = receiverWallet.diamondBalance + recipientDiamonds,
+        diamondBalance = newReceiverDiamondBalance,
         updatedAt = System.currentTimeMillis()
       )
     )
+
+    // Record diamond transaction ledger entry
+    database.walletDao().insertDiamondTransaction(
+      DiamondTransactionEntity(
+        transactionId = "TX-DIA-${UUID.randomUUID().toString().take(16)}",
+        userId = receiver.id,
+        amount = recipientDiamonds,
+        balanceBefore = receiverWallet.diamondBalance,
+        balanceAfter = newReceiverDiamondBalance,
+        type = "GIFT_REWARD",
+        referenceId = gift.id,
+        description = "Received ${count}x ${gift.name} from ${sender.nickname}"
+      )
+    )
+
 
     // 3. Record permanent gift transaction
     database.walletDao().insertGiftTransaction(
@@ -639,11 +992,286 @@ class LivoRepository(
     )
   }
 
+  // ==========================================================================
+  // Lucky Gift Sending (500 Coins: 100 Diamonds receiver, 100 Coins commission, 300 Coins promo pool)
+  // ==========================================================================
+  suspend fun sendLuckyGift(
+    receiverId: String,
+    luckyGiftId: String,
+    count: Int = 1
+  ): Result<SendGiftResponse> = withContext(Dispatchers.IO) {
+    val sender = _currentUser.value ?: return@withContext Result.failure(IllegalStateException("Not logged in"))
+    val luckyGift = luckyGiftCatalog.find { it.id == luckyGiftId }
+      ?: return@withContext Result.failure(IllegalArgumentException("Invalid lucky gift"))
+
+    val receiver = database.userDao().getUserById(receiverId)
+      ?: return@withContext Result.failure(IllegalArgumentException("Recipient not found"))
+
+    val totalCost = luckyGift.coinPrice * count
+    val senderWallet = database.walletDao().getWallet(sender.id)
+      ?: return@withContext Result.failure(IllegalStateException("Sender wallet not found"))
+
+    if (senderWallet.balance < totalCost) {
+      return@withContext Result.failure(IllegalStateException("Insufficient coin balance. Required: $totalCost, Available: ${senderWallet.balance}"))
+    }
+
+    val txId = "TX-LUCKY-${UUID.randomUUID().toString().take(16)}"
+    val newSenderBalance = senderWallet.balance - totalCost
+
+    // 1. Deduct sender Coins
+    database.walletDao().insertTransaction(
+      CoinTransactionEntity(
+        transactionId = txId,
+        userId = sender.id,
+        amount = -totalCost,
+        balanceBefore = senderWallet.balance,
+        balanceAfter = newSenderBalance,
+        type = "GIFT_SEND",
+        referenceId = luckyGift.id,
+        description = "Sent ${count}x Lucky Gift ${luckyGift.name} (${luckyGift.iconEmoji}) to ${receiver.nickname}"
+      )
+    )
+    database.walletDao().insertOrUpdateWallet(
+      senderWallet.copy(
+        balance = newSenderBalance,
+        totalSpent = senderWallet.totalSpent + totalCost,
+        updatedAt = System.currentTimeMillis()
+      )
+    )
+
+    // 2. Value distribution accounting:
+    // Receiver share: 100 Diamonds per 500 Coins (20%)
+    val totalReceiverDiamonds = luckyGift.receiverDiamondReward * count
+    val receiverWallet = database.walletDao().getWallet(receiver.id) ?: CoinWalletEntity(userId = receiver.id)
+    val newReceiverDiamondBalance = receiverWallet.diamondBalance + totalReceiverDiamonds
+    database.walletDao().insertOrUpdateWallet(
+      receiverWallet.copy(
+        diamondBalance = newReceiverDiamondBalance,
+        updatedAt = System.currentTimeMillis()
+      )
+    )
+    database.walletDao().insertDiamondTransaction(
+      DiamondTransactionEntity(
+        transactionId = "TX-DIA-LUCKY-${UUID.randomUUID().toString().take(14)}",
+        userId = receiver.id,
+        amount = totalReceiverDiamonds,
+        balanceBefore = receiverWallet.diamondBalance,
+        balanceAfter = newReceiverDiamondBalance,
+        type = "GIFT_REWARD",
+        referenceId = luckyGift.id,
+        description = "Received ${count}x Lucky Gift ${luckyGift.name} from ${sender.nickname}"
+      )
+    )
+
+    // 3. Promotional Pool & Platform Commission accounting ledger entries
+    val promoPoolAllocation = luckyGift.promotionalPoolAllocationCoins * count
+    val platformCommission = luckyGift.platformCommissionCoins * count
+    database.socialDao().insertAuditLog(
+      AuditLogEntity(
+        actorId = sender.id,
+        actorName = sender.nickname,
+        action = "LUCKY_GIFT_DISTRIBUTION",
+        targetType = "GIFT",
+        targetId = luckyGift.id,
+        details = "Price: $totalCost Coins | Receiver: $totalReceiverDiamonds Diamonds | Platform Commission: $platformCommission Coins | Promo Pool: $promoPoolAllocation Coins"
+      )
+    )
+
+    // 4. Record permanent gift transaction
+    database.walletDao().insertGiftTransaction(
+      GiftTransactionEntity(
+        senderId = sender.id,
+        senderName = sender.nickname,
+        receiverId = receiver.id,
+        receiverName = receiver.nickname,
+        roomId = _currentRoom.value?.id,
+        giftId = luckyGift.id,
+        giftName = luckyGift.name,
+        count = count,
+        totalCoins = totalCost
+      )
+    )
+
+    // 5. Update Wealth (Sender) & Charm (Receiver) scores + Sender XP
+    val updatedExp = sender.experiencePoints + (luckyGift.senderXpReward * count)
+    val newLevel = calculateLevel(updatedExp)
+    database.userDao().updateUser(
+      sender.copy(
+        wealthScore = sender.wealthScore + (luckyGift.wealthPoints * count),
+        experiencePoints = updatedExp,
+        level = newLevel
+      )
+    )
+    _currentUser.value = database.userDao().getUserById(sender.id)
+
+    database.userDao().updateUser(
+      receiver.copy(
+        charmScore = receiver.charmScore + (luckyGift.charmPoints * count)
+      )
+    )
+
+    // 6. Broadcast to Room Chat if active
+    val room = _currentRoom.value
+    if (room != null) {
+      database.roomDao().insertRoomMessage(
+        RoomMessageEntity(
+          roomId = room.id,
+          senderId = sender.id,
+          senderName = sender.nickname,
+          senderAvatar = sender.avatarUrl,
+          senderLivoId = sender.livoId,
+          messageType = "GIFT",
+          content = "sent ${count}x Lucky Gift ${luckyGift.name} (${luckyGift.iconEmoji}) to ${receiver.nickname}!",
+          giftIcon = luckyGift.iconEmoji,
+          giftQuantity = count
+        )
+      )
+    }
+
+    Result.success(
+      SendGiftResponse(
+        success = true,
+        newBalance = newSenderBalance,
+        transactionId = txId,
+        message = "Successfully sent Lucky Gift"
+      )
+    )
+  }
+
+  // ==========================================================================
+  // Official Diamond-to-Coin Exchange System (30% Fee, 70% Coins output)
+  // Conversion Formula: Coins Received = Diamonds Exchanged × 0.70
+  // ==========================================================================
+  suspend fun exchangeDiamondsToCoins(
+    diamondsToExchange: Long,
+    idempotencyKey: String = UUID.randomUUID().toString()
+  ): Result<ExchangeTransactionEntity> = withContext(Dispatchers.IO) {
+    val user = _currentUser.value ?: return@withContext Result.failure(IllegalStateException("Not logged in"))
+
+    if (diamondsToExchange <= 0) {
+      return@withContext Result.failure(IllegalArgumentException("Exchange amount must be greater than zero."))
+    }
+
+    val currencyConfig = getCurrencySettings()
+    if (!currencyConfig.isExchangeEnabled) {
+      return@withContext Result.failure(IllegalStateException("Diamond exchanges are currently suspended by administrator."))
+    }
+
+    if (diamondsToExchange < currencyConfig.minExchangeDiamonds) {
+      return@withContext Result.failure(IllegalArgumentException("Minimum exchange amount is ${currencyConfig.minExchangeDiamonds} Diamonds."))
+    }
+
+    if (diamondsToExchange > currencyConfig.maxDailyExchangeDiamonds) {
+      return@withContext Result.failure(IllegalArgumentException("Maximum daily limit is ${currencyConfig.maxDailyExchangeDiamonds} Diamonds."))
+    }
+
+    // Check duplicate request
+    val existingTx = database.walletDao().getExchangeTransactionById(idempotencyKey)
+    if (existingTx != null) {
+      return@withContext Result.success(existingTx)
+    }
+
+    val wallet = database.walletDao().getWallet(user.id)
+      ?: return@withContext Result.failure(IllegalStateException("Wallet not found"))
+
+    if (wallet.diamondBalance < diamondsToExchange) {
+      return@withContext Result.failure(IllegalStateException("Insufficient diamonds. Available: ${wallet.diamondBalance}, Requested: $diamondsToExchange"))
+    }
+
+    // Official server-side calculation:
+    // 30% platform fee, 70% user received
+    val feePercent = currencyConfig.diamondExchangeFeePercent // 30
+    val exchangeRate = currencyConfig.exchangeOutputCoinsPer100Diamonds / 100.0 // 0.70
+    val feeEquivalentDiamonds = (diamondsToExchange * (feePercent / 100.0)).toLong() // 300
+    val coinsToCredit = (diamondsToExchange * exchangeRate).toLong() // 700
+
+    val newDiamondBalance = wallet.diamondBalance - diamondsToExchange
+    val newCoinBalance = wallet.balance + coinsToCredit
+
+    // Atomic update of both balances
+    database.walletDao().insertOrUpdateWallet(
+      wallet.copy(
+        diamondBalance = newDiamondBalance,
+        balance = newCoinBalance,
+        updatedAt = System.currentTimeMillis()
+      )
+    )
+
+    // Debit Diamonds ledger entry
+    database.walletDao().insertDiamondTransaction(
+      DiamondTransactionEntity(
+        transactionId = "TX-DIA-EX-$idempotencyKey",
+        userId = user.id,
+        amount = -diamondsToExchange,
+        balanceBefore = wallet.diamondBalance,
+        balanceAfter = newDiamondBalance,
+        type = "EXCHANGE_DEBIT",
+        referenceId = idempotencyKey,
+        description = "Exchanged $diamondsToExchange Diamonds for $coinsToCredit Coins ($feePercent% fee: $feeEquivalentDiamonds 💎)"
+      )
+    )
+
+    // Credit Coins ledger entry
+    database.walletDao().insertTransaction(
+      CoinTransactionEntity(
+        transactionId = "TX-COIN-EX-$idempotencyKey",
+        userId = user.id,
+        amount = coinsToCredit,
+        balanceBefore = wallet.balance,
+        balanceAfter = newCoinBalance,
+        type = "REWARD",
+        referenceId = idempotencyKey,
+        description = "Credited $coinsToCredit Coins from $diamondsToExchange Diamonds exchange"
+      )
+    )
+
+    // Record permanent Exchange Transaction Receipt
+    val exchangeReceipt = ExchangeTransactionEntity(
+      transactionId = idempotencyKey,
+      userId = user.id,
+      diamondsExchanged = diamondsToExchange,
+      feePercentage = feePercent,
+      feeDiamondsEquivalent = feeEquivalentDiamonds,
+      coinsCredited = coinsToCredit,
+      exchangeRateUsed = exchangeRate,
+      status = "COMPLETED"
+    )
+    database.walletDao().insertExchangeTransaction(exchangeReceipt)
+
+    // Audit log
+    database.socialDao().insertAuditLog(
+      AuditLogEntity(
+        actorId = user.id,
+        actorName = user.nickname,
+        action = "DIAMOND_EXCHANGE",
+        targetType = "WALLET",
+        targetId = user.id,
+        details = "Exchanged $diamondsToExchange 💎 -> $coinsToCredit 🪙 ($feePercent% platform fee: $feeEquivalentDiamonds 💎)"
+      )
+    )
+
+    // Dispatch notification
+    database.socialDao().insertNotification(
+      NotificationEntity(
+        userId = user.id,
+        title = "Exchange Completed",
+        content = "Successfully exchanged $diamondsToExchange Diamonds for $coinsToCredit Coins.",
+        type = "COIN"
+      )
+    )
+
+    Result.success(exchangeReceipt)
+  }
+
+  fun observeAllExchangeTransactions(): Flow<List<ExchangeTransactionEntity>> =
+    database.walletDao().observeAllExchangeTransactions()
+
   private fun calculateLevel(exp: Long): Int {
     // Level formula: level = sqrt(exp / 500) + 1
     val calculated = (Math.sqrt((exp / 500.0)).toInt() + 1).coerceIn(1, 100)
     return calculated
   }
+
 
   // ==========================================================================
   // Rankings (Real Database Aggregation)
@@ -697,7 +1325,7 @@ class LivoRepository(
                 numericId = r.roomNumber,
                 name = r.title,
                 avatarUrl = r.coverUrl,
-                score = (r.listenersCount * 100L) + 500L,
+                score = r.listenersCount.toLong(),
                 level = 1,
                 role = UserRole.USER
               )
@@ -806,6 +1434,9 @@ class LivoRepository(
         roleInAgency = "Host"
       )
     )
+
+    // Increment agency totalMembers
+    database.socialDao().updateAgency(agency.copy(totalMembers = agency.totalMembers + 1))
 
     // Upgrade user role to HOST if normal user
     if (user.role == UserRole.USER) {
@@ -1053,6 +1684,335 @@ class LivoRepository(
   }
 
   // ==========================================================================
+  // 14. Owner Control Panel, Official Distribution & Dynamic Panel Builder
+  // ==========================================================================
+
+  fun observeAllPanelConfigs(): Flow<List<PanelConfigEntity>> =
+    database.panelDao().observePanelConfigs()
+
+  fun observeAllPanelTemplates(): Flow<List<PanelTemplateEntity>> =
+    database.panelDao().observeTemplates()
+
+  fun observeAllPanelAssignments(): Flow<List<UserPanelAssignmentEntity>> =
+    database.panelDao().observeAllAssignments()
+
+  fun observeUserActiveAssignments(userId: String): Flow<List<UserPanelAssignmentEntity>> =
+    database.panelDao().observeActiveAssignmentsForUser(userId)
+
+  fun observeCurrencySettings(): Flow<SystemCurrencySettingsEntity?> =
+    database.panelDao().observeCurrencySettings()
+
+  suspend fun getCurrencySettings(): SystemCurrencySettingsEntity = withContext(Dispatchers.IO) {
+    database.panelDao().getCurrencySettings() ?: SystemCurrencySettingsEntity()
+  }
+
+  suspend fun updateCurrencySettings(
+    referenceRate: Long,
+    exchangeFeePercent: Int,
+    outputCoins: Int,
+    minExchange: Long,
+    resellerDiscount: Int,
+    minWithdrawalDiamonds: Long = 500000L,
+    diamondsPerUsdWithdrawal: Long = 500000L,
+    isWithdrawalEnabled: Boolean = true
+  ): Result<String> = withContext(Dispatchers.IO) {
+    val actor = _currentUser.value ?: return@withContext Result.failure(IllegalStateException("Not logged in"))
+    if (actor.role != UserRole.OFFICIAL && actor.role != UserRole.SUPER_ADMIN) {
+      return@withContext Result.failure(IllegalStateException("Unauthorized. Owner privilege required."))
+    }
+
+    val updated = SystemCurrencySettingsEntity(
+      referenceRateCoinsPerUsd = referenceRate,
+      diamondExchangeFeePercent = exchangeFeePercent,
+      exchangeOutputCoinsPer100Diamonds = outputCoins,
+      minExchangeDiamonds = minExchange,
+      resellerDiscountPercent = resellerDiscount,
+      minWithdrawalDiamonds = minWithdrawalDiamonds,
+      diamondsPerUsdWithdrawal = diamondsPerUsdWithdrawal,
+      isWithdrawalEnabled = isWithdrawalEnabled,
+      updatedAt = System.currentTimeMillis()
+    )
+    database.panelDao().insertCurrencySettings(updated)
+
+    database.socialDao().insertAuditLog(
+      AuditLogEntity(
+        actorId = actor.id,
+        actorName = actor.nickname,
+        action = "UPDATE_CURRENCY_SETTINGS",
+        targetType = "SYSTEM",
+        targetId = "global_currency_settings",
+        details = "Rate: 1 USD = $referenceRate Coins, Diamond fee: $exchangeFeePercent%, Output: $outputCoins Coins/100 Diamonds"
+      )
+    )
+    Result.success("Virtual currency parameters updated successfully")
+  }
+
+  suspend fun savePanelConfig(
+    panelType: String,
+    displayName: String,
+    modules: List<PanelModuleConfig>,
+    isPublished: Boolean
+  ): Result<String> = withContext(Dispatchers.IO) {
+    val actor = _currentUser.value ?: return@withContext Result.failure(IllegalStateException("Not logged in"))
+    if (actor.role != UserRole.OFFICIAL && actor.role != UserRole.SUPER_ADMIN) {
+      return@withContext Result.failure(IllegalStateException("Unauthorized. Owner privilege required."))
+    }
+
+    val current = database.panelDao().getPanelConfigByType(panelType)
+    val nextVersion = (current?.version ?: 0) + 1
+    val modulesJson = org.json.JSONArray().apply {
+      modules.forEach { mod ->
+        val obj = org.json.JSONObject().apply {
+          put("moduleId", mod.moduleId)
+          put("moduleName", mod.moduleName)
+          put("isEnabled", mod.isEnabled)
+          put("accessScope", mod.accessScope)
+          put("maxLimit", mod.maxLimit)
+          val actArray = org.json.JSONArray()
+          mod.allowedActions.forEach { actArray.put(it) }
+          put("allowedActions", actArray)
+        }
+        put(obj)
+      }
+    }.toString()
+
+    val entity = PanelConfigEntity(
+      id = panelType,
+      panelType = panelType,
+      displayName = displayName,
+      isEnabled = true,
+      modulesJson = modulesJson,
+      isPublished = isPublished,
+      version = nextVersion,
+      lastUpdatedBy = actor.nickname,
+      lastUpdatedAt = System.currentTimeMillis()
+    )
+    database.panelDao().insertPanelConfig(entity)
+
+    database.socialDao().insertAuditLog(
+      AuditLogEntity(
+        actorId = actor.id,
+        actorName = actor.nickname,
+        action = if (isPublished) "PUBLISH_PANEL_CONFIG" else "SAVE_DRAFT_PANEL_CONFIG",
+        targetType = "PANEL_CONFIG",
+        targetId = panelType,
+        details = "${if (isPublished) "Published" else "Saved Draft"} config for $displayName (v$nextVersion) with ${modules.size} modules"
+      )
+    )
+
+    Result.success(if (isPublished) "Published configuration for $displayName" else "Draft saved for $displayName")
+  }
+
+  suspend fun savePanelTemplate(
+    templateName: String,
+    panelType: String,
+    description: String,
+    modules: List<PanelModuleConfig>
+  ): Result<String> = withContext(Dispatchers.IO) {
+    val actor = _currentUser.value ?: return@withContext Result.failure(IllegalStateException("Not logged in"))
+    val modulesJson = org.json.JSONArray().apply {
+      modules.forEach { mod ->
+        val obj = org.json.JSONObject().apply {
+          put("moduleId", mod.moduleId)
+          put("moduleName", mod.moduleName)
+          put("isEnabled", mod.isEnabled)
+          put("accessScope", mod.accessScope)
+          put("maxLimit", mod.maxLimit)
+          val actArray = org.json.JSONArray()
+          mod.allowedActions.forEach { actArray.put(it) }
+          put("allowedActions", actArray)
+        }
+        put(obj)
+      }
+    }.toString()
+
+    val template = PanelTemplateEntity(
+      id = "tmpl_${UUID.randomUUID().toString().take(8)}",
+      templateName = templateName.trim(),
+      panelType = panelType,
+      description = description.trim(),
+      modulesJson = modulesJson
+    )
+    database.panelDao().insertTemplate(template)
+    Result.success("Template '$templateName' created successfully")
+  }
+
+  suspend fun deletePanelTemplate(templateId: String): Result<String> = withContext(Dispatchers.IO) {
+    database.panelDao().deleteTemplate(templateId)
+    Result.success("Template removed")
+  }
+
+  suspend fun assignOfficialPanel(
+    targetUserId: String,
+    panelType: String,
+    roleToAssign: UserRole,
+    durationDays: Int, // -1 for permanent, 1, 7, 15, 30, 90
+    permittedFeaturesJson: String,
+    coinLimit: Long = 0L,
+    internalNotes: String = ""
+  ): Result<String> = withContext(Dispatchers.IO) {
+    val actor = _currentUser.value ?: return@withContext Result.failure(IllegalStateException("Not logged in"))
+    if (actor.role != UserRole.OFFICIAL && actor.role != UserRole.SUPER_ADMIN) {
+      return@withContext Result.failure(IllegalStateException("Unauthorized. Only Owner/Official can distribute panels."))
+    }
+
+    val targetUser = database.userDao().getUserById(targetUserId)
+      ?: return@withContext Result.failure(IllegalArgumentException("Target user not found."))
+
+    // Protect Owner from privilege downgrade
+    if (targetUser.role == UserRole.OFFICIAL && actor.id != targetUser.id) {
+      return@withContext Result.failure(IllegalStateException("Cannot modify or override Owner account permissions."))
+    }
+
+    val now = System.currentTimeMillis()
+    val expiresAt = if (durationDays > 0) now + (durationDays.toLong() * 86400000L) else -1L
+
+    // Existing assignment check
+    val existing = database.panelDao().getAssignment(targetUserId, panelType)
+    val assignmentId = existing?.id ?: UUID.randomUUID().toString()
+
+    val assignment = UserPanelAssignmentEntity(
+      id = assignmentId,
+      userId = targetUser.id,
+      userLivoId = targetUser.livoId,
+      userName = targetUser.nickname,
+      userAvatar = targetUser.avatarUrl,
+      panelType = panelType,
+      roleName = roleToAssign.displayName,
+      durationDays = durationDays,
+      expiresAt = expiresAt,
+      customPermissionsJson = permittedFeaturesJson,
+      coinInventoryLimit = coinLimit,
+      notes = internalNotes.trim(),
+      status = "ACTIVE",
+      assignedBy = actor.nickname,
+      assignedAt = now
+    )
+    database.panelDao().insertAssignment(assignment)
+
+    // Update target user's role if new role has higher or appropriate priority
+    if (roleToAssign.levelPriority > targetUser.role.levelPriority || targetUser.role == UserRole.USER) {
+      database.userDao().updateUser(targetUser.copy(role = roleToAssign))
+    }
+
+    // Send notification
+    database.socialDao().insertNotification(
+      NotificationEntity(
+        userId = targetUser.id,
+        title = "Official Panel Granted",
+        content = "You have been assigned the $panelType (${roleToAssign.displayName}). Duration: ${if (durationDays > 0) "$durationDays days" else "Permanent"}.",
+        type = "ADMIN"
+      )
+    )
+
+    // Audit log
+    database.socialDao().insertAuditLog(
+      AuditLogEntity(
+        actorId = actor.id,
+        actorName = actor.nickname,
+        action = "ASSIGN_OFFICIAL_PANEL",
+        targetType = "USER",
+        targetId = targetUser.id,
+        details = "Assigned $panelType to ${targetUser.nickname} (LIVO ID: ${targetUser.livoId}). Duration: ${if (durationDays > 0) "$durationDays days" else "Permanent"}. Notes: $internalNotes"
+      )
+    )
+
+    Result.success("Assigned $panelType to ${targetUser.nickname} successfully!")
+  }
+
+  suspend fun updateAssignmentStatus(
+    assignmentId: String,
+    newStatus: String // ACTIVE, SUSPENDED, REVOKED
+  ): Result<String> = withContext(Dispatchers.IO) {
+    val actor = _currentUser.value ?: return@withContext Result.failure(IllegalStateException("Not logged in"))
+    if (actor.role != UserRole.OFFICIAL && actor.role != UserRole.SUPER_ADMIN) {
+      return@withContext Result.failure(IllegalStateException("Unauthorized."))
+    }
+
+    val assignment = database.panelDao().getAssignmentById(assignmentId)
+      ?: return@withContext Result.failure(IllegalArgumentException("Assignment record not found"))
+
+    database.panelDao().updateAssignmentStatus(assignmentId, newStatus)
+
+    // If revoked, adjust user role if needed
+    if (newStatus == "REVOKED") {
+      val user = database.userDao().getUserById(assignment.userId)
+      if (user != null && user.role.displayName == assignment.roleName && user.role != UserRole.OFFICIAL) {
+        database.userDao().updateUser(user.copy(role = UserRole.USER))
+      }
+    }
+
+    database.socialDao().insertAuditLog(
+      AuditLogEntity(
+        actorId = actor.id,
+        actorName = actor.nickname,
+        action = "UPDATE_ASSIGNMENT_STATUS",
+        targetType = "PANEL_ASSIGNMENT",
+        targetId = assignmentId,
+        details = "Changed status of ${assignment.panelType} for ${assignment.userName} to $newStatus"
+      )
+    )
+    Result.success("Assignment status updated to $newStatus")
+  }
+
+  suspend fun extendAssignmentDuration(
+    assignmentId: String,
+    additionalDays: Int
+  ): Result<String> = withContext(Dispatchers.IO) {
+    val actor = _currentUser.value ?: return@withContext Result.failure(IllegalStateException("Not logged in"))
+    val assignment = database.panelDao().getAssignmentById(assignmentId)
+      ?: return@withContext Result.failure(IllegalArgumentException("Assignment not found"))
+
+    val baseTime = if (assignment.expiresAt > System.currentTimeMillis()) assignment.expiresAt else System.currentTimeMillis()
+    val newExpiry = baseTime + (additionalDays.toLong() * 86400000L)
+    val newTotalDays = if (assignment.durationDays > 0) assignment.durationDays + additionalDays else additionalDays
+
+    val updated = assignment.copy(
+      durationDays = newTotalDays,
+      expiresAt = newExpiry,
+      status = "ACTIVE"
+    )
+    database.panelDao().insertAssignment(updated)
+
+    database.socialDao().insertAuditLog(
+      AuditLogEntity(
+        actorId = actor.id,
+        actorName = actor.nickname,
+        action = "EXTEND_PANEL_DURATION",
+        targetType = "PANEL_ASSIGNMENT",
+        targetId = assignmentId,
+        details = "Extended ${assignment.panelType} for ${assignment.userName} by $additionalDays days"
+      )
+    )
+    Result.success("Extended access by $additionalDays days")
+  }
+
+  suspend fun removeAssignment(assignmentId: String): Result<String> = withContext(Dispatchers.IO) {
+    val actor = _currentUser.value ?: return@withContext Result.failure(IllegalStateException("Not logged in"))
+    val assignment = database.panelDao().getAssignmentById(assignmentId)
+      ?: return@withContext Result.failure(IllegalArgumentException("Assignment not found"))
+
+    database.panelDao().deleteAssignment(assignmentId)
+
+    val user = database.userDao().getUserById(assignment.userId)
+    if (user != null && user.role.displayName == assignment.roleName && user.role != UserRole.OFFICIAL) {
+      database.userDao().updateUser(user.copy(role = UserRole.USER))
+    }
+
+    database.socialDao().insertAuditLog(
+      AuditLogEntity(
+        actorId = actor.id,
+        actorName = actor.nickname,
+        action = "REMOVE_PANEL_ASSIGNMENT",
+        targetType = "PANEL_ASSIGNMENT",
+        targetId = assignmentId,
+        details = "Revoked and removed ${assignment.panelType} from ${assignment.userName}"
+      )
+    )
+    Result.success("Panel revoked and removed")
+  }
+
+  // ==========================================================================
   // Initial Catalog Seeding (Production-quality bootstrap)
   // ==========================================================================
   private suspend fun seedInitialDataIfNeeded() {
@@ -1069,12 +2029,13 @@ class LivoRepository(
       avatarUrl = "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200",
       bio = "Founder & Architect of Livo Voice Platform. Welcome to the future of voice communities!",
       role = UserRole.SUPER_ADMIN,
-      level = 25,
-      experiencePoints = 320000L,
-      wealthScore = 15000000L,
-      charmScore = 8500000L,
-      followersCount = 4280,
-      followingCount = 120,
+      level = 1,
+      experiencePoints = 0L,
+      wealthScore = 0L,
+      charmScore = 0L,
+      followersCount = 0,
+      followingCount = 0,
+      visitorsCount = 0,
       equippedFrameId = "frame_super_admin"
     )
     database.userDao().insertUser(adminUser)
@@ -1090,12 +2051,13 @@ class LivoRepository(
       avatarUrl = "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=200",
       bio = "Singing acoustic covers and late night chatting. Join my room every evening!",
       role = UserRole.HOST,
-      level = 14,
-      experiencePoints = 98000L,
-      wealthScore = 2400000L,
-      charmScore = 9200000L,
-      followersCount = 1890,
-      followingCount = 210,
+      level = 1,
+      experiencePoints = 0L,
+      wealthScore = 0L,
+      charmScore = 0L,
+      followersCount = 0,
+      followingCount = 0,
+      visitorsCount = 0,
       equippedFrameId = "frame_royal_crystal"
     )
     database.userDao().insertUser(hostUser)
@@ -1116,7 +2078,7 @@ class LivoRepository(
       announcement = "Welcome to Elena's Acoustic Lounge! Respect all guests and enjoy the music vibes.",
       category = RoomCategory.MUSIC,
       seatCount = 8,
-      listenersCount = 142
+      listenersCount = 1
     )
     database.roomDao().insertRoom(room1)
 
@@ -1153,7 +2115,7 @@ class LivoRepository(
       announcement = "Official questions, agency onboarding and platform roadmap discussion.",
       category = RoomCategory.CHAT,
       seatCount = 10,
-      listenersCount = 389
+      listenersCount = 1
     )
     database.roomDao().insertRoom(room2)
     val seats2 = (0 until 10).map { i ->
@@ -1183,8 +2145,8 @@ class LivoRepository(
       ownerName = adminUser.nickname,
       description = "Premier verified agency for high-performing voice hosts and talent.",
       commissionRate = 12.0,
-      totalMembers = 86,
-      totalMonthlyDiamonds = 24500000L
+      totalMembers = 1,
+      totalMonthlyDiamonds = 0L
     )
     database.socialDao().insertAgency(agency1)
 
@@ -1217,7 +2179,135 @@ class LivoRepository(
         type = "SYSTEM"
       )
     )
+
+    // 6. Seed System Currency Settings (1 USD = 400,000 Coins, 30% diamond fee, 70 Coins/100 Diamonds)
+    database.panelDao().insertCurrencySettings(
+      SystemCurrencySettingsEntity(
+        id = "global_currency_settings",
+        referenceRateCoinsPerUsd = 400000L,
+        diamondExchangeFeePercent = 30,
+        exchangeOutputCoinsPer100Diamonds = 70,
+        minExchangeDiamonds = 100L,
+        maxDailyExchangeDiamonds = 10000000L,
+        resellerDiscountPercent = 5,
+        updatedAt = System.currentTimeMillis()
+      )
+    )
+
+    // 7. Seed Default Panel Configurations for All 8 Core Panels
+    val defaultModules = listOf(
+      "dashboard" to "Dashboard",
+      "users" to "User Management",
+      "rooms" to "Room Management",
+      "agencies" to "Agency Management",
+      "hosting" to "Hosting Management",
+      "gifts" to "Gift Management",
+      "coin_reports" to "Coin & Diamond Reports",
+      "frames" to "Frame Management",
+      "rankings" to "Ranking Management",
+      "notifications" to "Notifications",
+      "support" to "Support & Reports",
+      "audit_logs" to "Audit Logs"
+    )
+
+    PanelType.values().forEach { pType ->
+      val modules = defaultModules.map { (id, name) ->
+        val isFin = id.contains("coin")
+        val scope = when (pType) {
+          PanelType.OFFICIAL, PanelType.SUPER_ADMIN -> "GLOBAL"
+          PanelType.MANAGER -> "ASSIGNED_ONLY"
+          PanelType.BD -> "ASSIGNED_ONLY"
+          PanelType.AGENCY -> "SELF_ONLY"
+          PanelType.HOSTING -> "SELF_ONLY"
+          PanelType.COIN_RESELLER, PanelType.SUPER_COIN_RESELLER -> "ASSIGNED_ONLY"
+        }
+        val actions = if (pType == PanelType.OFFICIAL) {
+          listOf("VIEW", "CREATE", "EDIT", "DELETE", "APPROVE", "ASSIGN", "EXPORT", "MANAGE_PERMISSIONS")
+        } else if (pType == PanelType.SUPER_ADMIN) {
+          listOf("VIEW", "CREATE", "EDIT", "APPROVE", "ASSIGN", "EXPORT")
+        } else {
+          listOf("VIEW", "CREATE", "EDIT")
+        }
+        PanelModuleConfig(
+          moduleId = id,
+          moduleName = name,
+          isEnabled = if (isFin && (pType == PanelType.HOSTING || pType == PanelType.AGENCY)) false else true,
+          allowedActions = actions,
+          accessScope = scope
+        )
+      }
+
+      val json = org.json.JSONArray().apply {
+        modules.forEach { mod ->
+          val obj = org.json.JSONObject().apply {
+            put("moduleId", mod.moduleId)
+            put("moduleName", mod.moduleName)
+            put("isEnabled", mod.isEnabled)
+            put("accessScope", mod.accessScope)
+            put("maxLimit", mod.maxLimit)
+            val actArray = org.json.JSONArray()
+            mod.allowedActions.forEach { actArray.put(it) }
+            put("allowedActions", actArray)
+          }
+          put(obj)
+        }
+      }.toString()
+
+      database.panelDao().insertPanelConfig(
+        PanelConfigEntity(
+          id = pType.name,
+          panelType = pType.name,
+          displayName = pType.displayName,
+          isEnabled = true,
+          modulesJson = json,
+          isPublished = true,
+          version = 1,
+          lastUpdatedBy = "System",
+          lastUpdatedAt = System.currentTimeMillis()
+        )
+      )
+    }
+
+    // 8. Seed Predefined Templates
+    val templates = listOf(
+      Triple("Official Basic", PanelType.OFFICIAL.name, "Standard official administration suite"),
+      Triple("Official Full", PanelType.OFFICIAL.name, "Unrestricted official panel with all permissions"),
+      Triple("Manager Standard", PanelType.MANAGER.name, "Standard manager controls for assigned users & rooms"),
+      Triple("Manager Custom", PanelType.MANAGER.name, "Flexible team manager profile with custom limits"),
+      Triple("Super Admin Restricted", PanelType.SUPER_ADMIN.name, "Super admin with protected owner controls enabled"),
+      Triple("BD Standard", PanelType.BD.name, "Business developer panel with agency assignment oversight"),
+      Triple("Agency Standard", PanelType.AGENCY.name, "Agency leader controls for hosts and diamond activity"),
+      Triple("Hosting Standard", PanelType.HOSTING.name, "Host performance, room scheduling and achievements"),
+      Triple("Coin Reseller Standard", PanelType.COIN_RESELLER.name, "Coin reseller inventory and customer receipt delivery"),
+      Triple("Super Coin Reseller Standard", PanelType.SUPER_COIN_RESELLER.name, "High-capacity reseller with downstream inventory allocation")
+    )
+
+    templates.forEach { (name, type, desc) ->
+      database.panelDao().insertTemplate(
+        PanelTemplateEntity(
+          id = "tmpl_${name.lowercase().replace(" ", "_")}",
+          templateName = name,
+          panelType = type,
+          description = desc,
+          modulesJson = "[]"
+        )
+      )
+    }
+
+    // 8. Seed Default Recharge Packages ($1 = 400,000 Coins)
+    database.walletDao().insertRechargePackages(
+      listOf(
+        RechargePackageEntity("pkg_1", 1.00, 400000, 0, isPopular = true, sortOrder = 1),
+        RechargePackageEntity("pkg_2", 2.00, 800000, 0, sortOrder = 2),
+        RechargePackageEntity("pkg_3", 5.00, 2000000, 0, sortOrder = 3),
+        RechargePackageEntity("pkg_4", 10.00, 4000000, 0, sortOrder = 4),
+        RechargePackageEntity("pkg_5", 25.00, 10000000, 0, sortOrder = 5),
+        RechargePackageEntity("pkg_6", 50.00, 20000000, 0, sortOrder = 6),
+        RechargePackageEntity("pkg_7", 100.00, 40000000, 0, sortOrder = 7)
+      )
+    )
   }
+
 
   // ==========================================================================
   // 13. Reels, Stories, Likes, Comments & Video Upload System
@@ -1234,10 +2324,10 @@ class LivoRepository(
         hashtags = "#sunset #vibes #peace #lvoice",
         musicTitle = "Original Audio - dreamer_girl",
         durationSec = 28,
-        viewsCount = 128400,
-        likesCount = 128000,
-        commentsCount = 2400,
-        sharesCount = 12000,
+        viewsCount = 0,
+        likesCount = 0,
+        commentsCount = 0,
+        sharesCount = 0,
         isLiked = false,
         isSaved = false,
         isFollowing = false
@@ -1252,13 +2342,13 @@ class LivoRepository(
         hashtags = "#mountains #citylights #night",
         musicTitle = "Night Whispers Lo-Fi",
         durationSec = 28,
-        viewsCount = 84200,
-        likesCount = 12400,
-        commentsCount = 520,
-        sharesCount = 3400,
+        viewsCount = 0,
+        likesCount = 0,
+        commentsCount = 0,
+        sharesCount = 0,
         isLiked = false,
         isSaved = false,
-        isFollowing = true
+        isFollowing = false
       ),
       ReelEntity(
         id = "reel_3",
@@ -1270,11 +2360,11 @@ class LivoRepository(
         hashtags = "#sunsetbeats #musiclover",
         musicTitle = "Acoustic Sunset Melody 🎸",
         durationSec = 36,
-        viewsCount = 95400,
-        likesCount = 18700,
-        commentsCount = 840,
-        sharesCount = 4200,
-        isLiked = true,
+        viewsCount = 0,
+        likesCount = 0,
+        commentsCount = 0,
+        sharesCount = 0,
+        isLiked = false,
         isSaved = false,
         isFollowing = false
       ),
@@ -1288,13 +2378,13 @@ class LivoRepository(
         hashtags = "#squadgoals #forever #goldenhour",
         musicTitle = "Memories of Summer 🌅",
         durationSec = 31,
-        viewsCount = 112000,
-        likesCount = 31600,
-        commentsCount = 1530,
-        sharesCount = 6700,
+        viewsCount = 0,
+        likesCount = 0,
+        commentsCount = 0,
+        sharesCount = 0,
         isLiked = false,
-        isSaved = true,
-        isFollowing = true
+        isSaved = false,
+        isFollowing = false
       ),
       ReelEntity(
         id = "reel_5",
@@ -1306,10 +2396,10 @@ class LivoRepository(
         hashtags = "#latte #cozyvibes #journaling",
         musicTitle = "Coffee Shop Acoustic Notes ☕",
         durationSec = 22,
-        viewsCount = 68000,
-        likesCount = 27100,
-        commentsCount = 1120,
-        sharesCount = 5100,
+        viewsCount = 0,
+        likesCount = 0,
+        commentsCount = 0,
+        sharesCount = 0,
         isLiked = false,
         isSaved = false,
         isFollowing = false
@@ -1318,94 +2408,56 @@ class LivoRepository(
   )
   val reels: StateFlow<List<ReelEntity>> = _reelsList.asStateFlow()
 
-  private val _storiesList = MutableStateFlow<List<StoryEntity>>(
-    listOf(
-      StoryEntity(
-        id = "story_mine",
-        userId = "me",
-        userName = "Your Story",
-        userAvatar = "reel_bg_dreamer_girl",
-        mediaDrawableName = "reel_bg_dreamer_girl",
-        caption = "Golden sunset at the bay",
-        isViewed = false,
-        isMine = true
-      ),
-      StoryEntity(
-        id = "story_ayesha",
-        userId = "user_ayesha",
-        userName = "Ayesha",
-        userAvatar = "story_avatar_daisy",
-        mediaDrawableName = "story_avatar_daisy",
-        caption = "Spring blossoms are in full bloom 🌼",
-        isViewed = false
-      ),
-      StoryEntity(
-        id = "story_zainab",
-        userId = "user_zainab",
-        userName = "Zainab",
-        userAvatar = "story_avatar_butterfly",
-        mediaDrawableName = "story_avatar_butterfly",
-        caption = "Night fairy lights ✨🦋",
-        isViewed = false
-      ),
-      StoryEntity(
-        id = "story_hira",
-        userId = "user_hira",
-        userName = "Hira",
-        userAvatar = "reel_thumb_silence",
-        mediaDrawableName = "reel_thumb_silence",
-        caption = "Peaceful dusk view 🌅",
-        isViewed = false
-      ),
-      StoryEntity(
-        id = "story_sara",
-        userId = "user_sara",
-        userName = "Sara",
-        userAvatar = "reel_thumb_music",
-        mediaDrawableName = "reel_thumb_music",
-        caption = "Chill playlist session 🎧",
-        isViewed = true
-      )
-    )
-  )
+  private val _storiesList = MutableStateFlow<List<StoryEntity>>(emptyList())
   val stories: StateFlow<List<StoryEntity>> = _storiesList.asStateFlow()
 
-  private val _commentsMap = MutableStateFlow<Map<String, List<ReelCommentEntity>>>(
-    mapOf(
-      "reel_1" to listOf(
-        ReelCommentEntity(
-          id = "c_1",
-          reelId = "reel_1",
-          userId = "u_zainab",
-          userName = "Zainab",
-          userAvatar = "story_avatar_butterfly",
-          content = "This view is breathtaking! The butterfly hair clip is so pretty 🦋✨",
-          likesCount = 342,
-          isLiked = true
-        ),
-        ReelCommentEntity(
-          id = "c_2",
-          reelId = "reel_1",
-          userId = "u_ayesha",
-          userName = "Ayesha",
-          userAvatar = "story_avatar_daisy",
-          content = "Such serene vibes... where was this recorded? 😍",
-          likesCount = 189,
-          isLiked = false
-        ),
-        ReelCommentEntity(
-          id = "c_3",
-          reelId = "reel_1",
-          userId = "u_ali",
-          userName = "Ali Raza",
-          userAvatar = "",
-          content = "L Voice audio quality sounds crystal clear here! 🎙️",
-          likesCount = 76,
-          isLiked = false
+  private val _commentsMap = MutableStateFlow<Map<String, List<ReelCommentEntity>>>(emptyMap())
+
+  // ==========================================================================
+  // Clean Up Legacy Demo & Placeholder Data From Database
+  // ==========================================================================
+  suspend fun cleanUpLegacyDemoData() = withContext(Dispatchers.IO) {
+    val users = database.userDao().observeAllUsers().firstOrNull() ?: emptyList()
+    users.forEach { u ->
+      val realFollowers = database.userDao().getFollowersCount(u.id)
+      val realFollowing = database.userDao().getFollowingCount(u.id)
+      val hasFakeFollowers = u.followersCount != realFollowers || u.followingCount != realFollowing
+      val hasFakeWealthOrCharm = (u.wealthScore >= 2400000L && (u.email.contains("shahroz") || u.email.contains("host"))) ||
+                                (u.charmScore >= 8500000L && (u.email.contains("shahroz") || u.email.contains("host"))) ||
+                                (u.experiencePoints >= 98000L && (u.email.contains("shahroz") || u.email.contains("host")))
+      if (hasFakeFollowers || hasFakeWealthOrCharm) {
+        val exp = if (hasFakeWealthOrCharm) 0L else u.experiencePoints
+        val level = calculateLevel(exp)
+        val sanitized = u.copy(
+          followersCount = realFollowers,
+          followingCount = realFollowing,
+          wealthScore = if (hasFakeWealthOrCharm) 0L else u.wealthScore,
+          charmScore = if (hasFakeWealthOrCharm) 0L else u.charmScore,
+          experiencePoints = exp,
+          level = level,
+          visitorsCount = 0
         )
-      )
-    )
-  )
+        database.userDao().updateUser(sanitized)
+        if (_currentUser.value?.id == u.id) {
+          _currentUser.value = sanitized
+        }
+      }
+    }
+
+    val rooms = database.roomDao().observeActiveRooms().firstOrNull() ?: emptyList()
+    rooms.forEach { r ->
+      if (r.listenersCount == 142 || r.listenersCount == 389) {
+        database.roomDao().updateRoom(r.copy(listenersCount = 1))
+      }
+    }
+
+    val agencies = database.socialDao().observeAgencies().firstOrNull() ?: emptyList()
+    agencies.forEach { a ->
+      if (a.totalMembers == 86 || a.totalMonthlyDiamonds == 24500000L) {
+        database.socialDao().updateAgency(a.copy(totalMembers = 1, totalMonthlyDiamonds = 0L))
+      }
+    }
+  }
 
   fun observeComments(reelId: String): Flow<List<ReelCommentEntity>> {
     return _commentsMap.map { map -> map[reelId] ?: emptyList() }

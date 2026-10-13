@@ -64,9 +64,9 @@ fun ProfileScreen(
   val currentUser by repository.currentUser.collectAsState()
   val wallet by repository.observeWallet(currentUser?.id ?: "").collectAsState(initial = null)
 
-  // Real statistics from database (or matching baseline stats)
-  val followingCount by repository.observeFollowingCount(currentUser?.id ?: "").collectAsState(initial = 1)
-  val followersCount by repository.observeFollowersCount(currentUser?.id ?: "").collectAsState(initial = 30)
+  // Real statistics from database
+  val followingCount by repository.observeFollowingCount(currentUser?.id ?: "").collectAsState(initial = 0)
+  val followersCount by repository.observeFollowersCount(currentUser?.id ?: "").collectAsState(initial = 0)
   val myRoom by repository.observeUserRoom(currentUser?.id ?: "").collectAsState(initial = null)
 
   // Interactive Sheets & Dialog States
@@ -153,32 +153,73 @@ fun ProfileScreen(
             .fillMaxWidth()
             .padding(horizontal = 20.dp, vertical = 10.dp)
         ) {
-          // LIVO Logo with Crown matching screenshot
-          Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-              Text(
-                text = "👑",
-                fontSize = 12.sp,
-                modifier = Modifier.offset(y = 2.dp)
-              )
-              Text(
-                text = "LIVO",
-                color = Color.White,
-                fontSize = 24.sp,
-                fontWeight = FontWeight.Black,
-                letterSpacing = 2.sp,
-                style = MaterialTheme.typography.headlineMedium.copy(
-                  brush = Brush.linearGradient(
-                    listOf(
-                      Color(0xFFE0E7FF),
-                      Color(0xFFC084FC),
-                      Color(0xFF38BDF8)
+          // LIVO Logo with Crown matching screenshot & Quick Admin/Owner launcher
+          Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+            modifier = Modifier.fillMaxWidth()
+          ) {
+            Row(
+              verticalAlignment = Alignment.CenterVertically,
+              modifier = Modifier
+                .clip(RoundedCornerShape(8.dp))
+                .clickable { onOpenAdminPanel() }
+                .padding(4.dp)
+            ) {
+              Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                  text = "👑",
+                  fontSize = 12.sp,
+                  modifier = Modifier.offset(y = 2.dp)
+                )
+                Text(
+                  text = "LIVO",
+                  color = Color.White,
+                  fontSize = 24.sp,
+                  fontWeight = FontWeight.Black,
+                  letterSpacing = 2.sp,
+                  style = MaterialTheme.typography.headlineMedium.copy(
+                    brush = Brush.linearGradient(
+                      listOf(
+                        Color(0xFFE0E7FF),
+                        Color(0xFFC084FC),
+                        Color(0xFF38BDF8)
+                      )
                     )
                   )
                 )
-              )
+              }
+            }
+
+            // Quick Shield Badge for Owner / Super Admin
+            Surface(
+              shape = RoundedCornerShape(12.dp),
+              color = Color(0xFF7C3AED).copy(alpha = 0.25f),
+              border = BorderStroke(1.dp, Color(0xFFC084FC).copy(alpha = 0.4f)),
+              modifier = Modifier.clickable { onOpenAdminPanel() }
+            ) {
+              Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+              ) {
+                Icon(
+                  imageVector = Icons.Default.AdminPanelSettings,
+                  contentDescription = "Owner Panel",
+                  tint = Color(0xFFFDE047),
+                  modifier = Modifier.size(16.dp)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                  text = "OWNER PANEL",
+                  color = Color.White,
+                  fontSize = 11.sp,
+                  fontWeight = FontWeight.Bold,
+                  letterSpacing = 0.5.sp
+                )
+              }
             }
           }
+
         }
 
         Spacer(modifier = Modifier.height(18.dp))
@@ -350,7 +391,7 @@ fun ProfileScreen(
                 ) {
                   Text("👑", fontSize = 9.sp)
                   Text(
-                    text = "${currentUser?.level ?: 19}",
+                    text = "${currentUser?.level ?: 1}",
                     color = Color.White,
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Bold
@@ -358,7 +399,7 @@ fun ProfileScreen(
                 }
               }
 
-              // 3. Blue Diamond Gem Badge (32)
+              // 3. Blue Diamond Gem Badge (Real Wealth Level)
               Surface(
                 shape = RoundedCornerShape(10.dp),
                 color = Color(0xFF1E40AF),
@@ -371,8 +412,9 @@ fun ProfileScreen(
                   modifier = Modifier.padding(horizontal = 6.dp)
                 ) {
                   Text("💎", fontSize = 9.sp)
+                  val wealthLevel = ((currentUser?.wealthScore ?: 0L) / 50000L + 1).coerceAtMost(100)
                   Text(
-                    text = "32",
+                    text = "$wealthLevel",
                     color = Color.White,
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Bold
@@ -380,7 +422,7 @@ fun ProfileScreen(
                 }
               }
 
-              // 4. Cyan Wing Badge (35)
+              // 4. Cyan Wing Badge (Real Charm Level)
               Surface(
                 shape = RoundedCornerShape(10.dp),
                 color = Color(0xFF0E7490),
@@ -393,8 +435,9 @@ fun ProfileScreen(
                   modifier = Modifier.padding(horizontal = 6.dp)
                 ) {
                   Text("🪽", fontSize = 9.sp)
+                  val charmLevel = ((currentUser?.charmScore ?: 0L) / 50000L + 1).coerceAtMost(100)
                   Text(
-                    text = "35",
+                    text = "$charmLevel",
                     color = Color.White,
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Bold
@@ -405,13 +448,13 @@ fun ProfileScreen(
 
             Spacer(modifier = Modifier.height(6.dp))
 
-            // Row 3: ID:2556340 with Copy Icon
+            // Row 3: Real Livo ID with Copy Icon
             Row(
               verticalAlignment = Alignment.CenterVertically,
               modifier = Modifier
                 .clip(RoundedCornerShape(6.dp))
                 .clickable {
-                  val idToCopy = currentUser?.livoId ?: 2556340L
+                  val idToCopy = currentUser?.livoId ?: 0L
                   val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                   val clip = ClipData.newPlainText("Livo ID", idToCopy.toString())
                   clipboard.setPrimaryClip(clip)
@@ -419,7 +462,7 @@ fun ProfileScreen(
                 }
             ) {
               Text(
-                text = "ID:${currentUser?.livoId ?: 2556340}",
+                text = "ID:${currentUser?.livoId ?: ""}",
                 color = Color(0xFF93C5FD),
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Medium
@@ -1182,6 +1225,24 @@ fun ProfileScreen(
         Text("App Settings", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(16.dp))
 
+        // Owner & Admin Panel Access (Prominent for Official/Super Admin or available to launch control)
+        Button(
+          onClick = {
+            showSettingsSheet = false
+            onOpenAdminPanel()
+          },
+          colors = ButtonDefaults.buttonColors(
+            containerColor = Color(0xFF7C3AED)
+          ),
+          modifier = Modifier.fillMaxWidth()
+        ) {
+          Icon(Icons.Default.AdminPanelSettings, contentDescription = "Owner Panel", tint = Color(0xFFFDE047))
+          Spacer(modifier = Modifier.width(8.dp))
+          Text("👑 Owner & Admin Control Panel", color = Color.White, fontWeight = FontWeight.Bold)
+        }
+
+        Spacer(modifier = Modifier.height(10.dp))
+
         // Switch Account
         Button(
           onClick = {
@@ -1234,41 +1295,51 @@ fun ProfileScreen(
 
   // 9. Account Switch Dialog
   if (showAccountSwitchDialog) {
+    val availableAccounts by repository.observeAllUsers().collectAsState(initial = emptyList())
+
     AlertDialog(
       onDismissRequest = { showAccountSwitchDialog = false },
       containerColor = CardSurfaceColor,
       title = { Text("Switch Active Account", color = Color.White, fontWeight = FontWeight.Bold) },
       text = {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-          listOf(
-            Triple("super_admin_1", "SHERRY (Super Admin)", "👑 Official Lead"),
-            Triple("host_user_1", "Daisy Host (Official Host)", "🎤 Verified Host"),
-            Triple("user_regular_1", "Alex Social (Regular User)", "🎵 Music Lover")
-          ).forEach { (id, name, desc) ->
+          Text("Select account to test different role permissions:", color = Color(0xFF94A3B8), fontSize = 12.sp)
+          availableAccounts.forEach { acc ->
+            val isCurrent = currentUser?.id == acc.id
             Card(
               shape = RoundedCornerShape(10.dp),
               colors = CardDefaults.cardColors(
-                containerColor = if (currentUser?.id == id) Color(0xFF38BDF8).copy(alpha = 0.2f) else Color(0xFF1E293B)
+                containerColor = if (isCurrent) Color(0xFF38BDF8).copy(alpha = 0.2f) else Color(0xFF1E293B)
               ),
-              border = BorderStroke(1.dp, if (currentUser?.id == id) Color(0xFF38BDF8) else Color.Transparent),
+              border = BorderStroke(1.dp, if (isCurrent) Color(0xFF38BDF8) else Color.Transparent),
               modifier = Modifier
                 .fillMaxWidth()
                 .clickable {
                   coroutineScope.launch {
-                    repository.switchAccount(id)
+                    repository.switchAccount(acc.id)
                     showAccountSwitchDialog = false
-                    Toast.makeText(context, "Switched to $name", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "Switched to ${acc.nickname} (${acc.role.displayName})", Toast.LENGTH_SHORT).show()
                   }
                 }
             ) {
               Column(modifier = Modifier.padding(12.dp)) {
-                Text(name, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                Text(desc, color = Color(0xFF94A3B8), fontSize = 11.sp)
+                Text(
+                  text = "${acc.nickname} (${acc.role.displayName})",
+                  color = Color.White,
+                  fontWeight = FontWeight.Bold,
+                  fontSize = 14.sp
+                )
+                Text(
+                  text = "LIVO ID: ${acc.livoId} • ${acc.email}",
+                  color = Color(0xFF94A3B8),
+                  fontSize = 11.sp
+                )
               }
             }
           }
         }
       },
+
       confirmButton = {
         TextButton(onClick = { showAccountSwitchDialog = false }) {
           Text("Close", color = Color(0xFF94A3B8))

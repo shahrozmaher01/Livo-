@@ -57,6 +57,10 @@ fun HomeScreen(
   val currentUser by repository.currentUser.collectAsState()
   val activeRooms by repository.activeRooms.collectAsState(initial = emptyList())
   val wallet by repository.observeWallet(currentUser?.id ?: "").collectAsState(initial = null)
+  val allUsers by repository.observeAllUsers().collectAsState(initial = emptyList())
+  val topRankedUsers = remember(allUsers) {
+    allUsers.sortedByDescending { it.charmScore + it.wealthScore }.take(3)
+  }
 
   var selectedCategory by remember { mutableStateOf("All") }
   var showCreateRoomDialog by remember { mutableStateOf(false) }
@@ -245,33 +249,37 @@ fun HomeScreen(
               )
             }
 
-            // Top 3 Podium Users
+            // Top 3 Podium Users (Real Data from database)
             Row(
               verticalAlignment = Alignment.CenterVertically,
               horizontalArrangement = Arrangement.spacedBy(14.dp)
             ) {
+              val user1 = topRankedUsers.getOrNull(0)
+              val user2 = topRankedUsers.getOrNull(1)
+              val user3 = topRankedUsers.getOrNull(2)
+
               // Rank 1
               RankUserPodiumItem(
                 rankNumber = 1,
                 crownColor = Color(0xFFF5BA42),
-                score = "2.8M",
-                avatarRes = null
+                score = user1?.let { formatReelCount(it.charmScore + it.wealthScore) } ?: "-",
+                avatarUrl = user1?.avatarUrl
               )
 
-              // Rank 2 (Cat Avatar from screenshot)
+              // Rank 2
               RankUserPodiumItem(
                 rankNumber = 2,
                 crownColor = Color(0xFFE2E8F0),
-                score = "2.1M",
-                avatarRes = R.drawable.avatar_rank_cat
+                score = user2?.let { formatReelCount(it.charmScore + it.wealthScore) } ?: "-",
+                avatarUrl = user2?.avatarUrl
               )
 
               // Rank 3
               RankUserPodiumItem(
                 rankNumber = 3,
                 crownColor = Color(0xFFCD7F32),
-                score = "1.6M",
-                avatarRes = null
+                score = user3?.let { formatReelCount(it.charmScore + it.wealthScore) } ?: "-",
+                avatarUrl = user3?.avatarUrl
               )
             }
           }
@@ -590,7 +598,8 @@ private fun RankUserPodiumItem(
   rankNumber: Int,
   crownColor: Color,
   score: String,
-  avatarRes: Int? = null
+  avatarRes: Int? = null,
+  avatarUrl: String? = null
 ) {
   Row(
     verticalAlignment = Alignment.CenterVertically,
@@ -601,7 +610,18 @@ private fun RankUserPodiumItem(
       contentAlignment = Alignment.TopStart,
       modifier = Modifier.size(34.dp)
     ) {
-      if (avatarRes != null) {
+      if (!avatarUrl.isNullOrBlank()) {
+        AsyncImage(
+          model = avatarUrl,
+          contentDescription = "Rank $rankNumber Avatar",
+          contentScale = ContentScale.Crop,
+          modifier = Modifier
+            .size(30.dp)
+            .align(Alignment.Center)
+            .clip(CircleShape)
+            .border(1.dp, crownColor, CircleShape)
+        )
+      } else if (avatarRes != null) {
         Image(
           painter = painterResource(id = avatarRes),
           contentDescription = "Rank $rankNumber Avatar",
